@@ -8,13 +8,14 @@ AF_DCMotor motorBackRight(1);
 AF_DCMotor motorFrontLeft(4);
 AF_DCMotor motorBackLeft(3);
 
-const int MOTOR_SPEED_LOW = 170;
+const int MOTOR_SPEED_LOW = 160;
 const int MOTOR_SPEED_HIGH = 255;
 
 /**
  * Other constants
  */
-const int MAX_BACKUP_TIME = 500;
+const int MAX_BACKUP_TIME = 800;
+const int MAX_ALIGNING_TIME = 800;
 const int SENSOR_MAX_TIMEOUT = 500;
 
 /**
@@ -22,6 +23,7 @@ const int SENSOR_MAX_TIMEOUT = 500;
  */
 int motorSpeed = MOTOR_SPEED_LOW;
 int backupTimeElapsed = 0;
+int aligningTimeElapsed = 0;
 int edgeDetectionThreshold = 10;
 int sensorTriggerPin = 53;
 int sensorEchoPin = 52;
@@ -32,6 +34,7 @@ int sensorEchoPin = 52;
 enum class Mode {
   MovingStraight,
   FindingClearPath,
+  AligningWithClearPath,
   EmergencyBackup,
   Error,
 };
@@ -90,7 +93,23 @@ void loop() {
     }
     break;
     case Mode::FindingClearPath: { // turn in a circle to find a clear way forward
-      turnRight(1); // TODO make random turn amount
+      turnRight(); // TODO make random turn amount
+    }
+    break;
+    case Mode::AligningWithClearPath: { // turn in a circle to find a clear way forward
+
+      Serial.print("Aligning elasped time: ");
+      Serial.print(aligningTimeElapsed);
+      Serial.println(" millis");
+      aligningTimeElapsed += millis() - loopStart;
+
+      if (aligningTimeElapsed < MAX_ALIGNING_TIME) {
+        turnRight();
+      } else {
+        Serial.println("Clear path alignment finished, starting to move forward");
+        aligningTimeElapsed = 0;
+        runningMode = Mode::MovingStraight; 
+      }
     }
     break;
     case Mode::MovingStraight: { // way forward is clear, so go that way
@@ -158,7 +177,13 @@ void processSensorResult(SensorResult result) {
     }
     break;
     case SensorResult::Table: {
-      if (runningMode != Mode::MovingStraight) {
+
+      if (runningMode == Mode::FindingClearPath || runningMode == Mode::EmergencyBackup) {
+        Serial.println("Table detected, turning a bit more to align with clear path forward");
+        runningMode = Mode::AligningWithClearPath;
+      }
+      
+      if (runningMode != Mode::MovingStraight && runningMode != Mode::AligningWithClearPath) {
         Serial.println("Table detected, starting to move straight");
         runningMode = Mode::MovingStraight;
       }
@@ -186,15 +211,14 @@ void backward() {
   motorBackLeft.run(BACKWARD);
 }
 
-void turnRight(int amount) {
+void turnRight() {
   motorFrontRight.run(BACKWARD);
   motorBackRight.run(BACKWARD);
   motorFrontLeft.run(FORWARD);
   motorBackLeft.run(FORWARD);
-  // TODO use amount
 }
 
-void turnLeft(int amount) {
+void turnLeft() {
   motorFrontRight.run(FORWARD);
   motorBackRight.run(FORWARD);
   motorFrontLeft.run(BACKWARD);
