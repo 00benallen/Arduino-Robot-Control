@@ -1,3 +1,15 @@
+#include <LedControl.h>
+
+// note: 
+// LedControl(DIN, CLK, CS, devices)
+// does not match order of pins on device, CLK and CS are reversed between LedControl and actual device pin order
+LedControl lc=LedControl(40,41,38,1);
+byte exlam[8] =       {B00000000,B00000000,B00000000,B11111011,B11111011,B00000000,B00000000,B00000000};
+byte arrowLeft[8]=    {B00011000,B00100100,B01000010,B10000001,B11111111,B00011000,B00011000,B00011000};
+byte arrowRight[8]=   {B00011000,B00011000,B00011000,B11111111,B10000001,B01000010,B00100100,B00011000};
+byte arrowForward[8]= {B00010000,B00110000,B01010000,B10011111,B10011111,B01010000,B00110000,B00010000};
+byte arrowBackward[8]={B00001000,B00001100,B00001010,B11111001,B11111001,B00001010,B00001100,B00001000};
+
 #include <AFMotor.h>
 
 /**
@@ -91,6 +103,13 @@ void setup()
   pinMode(sensorLeftTriggerPin, OUTPUT);
   pinMode(sensorRightEchoPin, INPUT);
   pinMode(sensorLeftEchoPin, INPUT);
+
+  lc.shutdown(0,false);
+  /* Set the brightness to a medium values */
+  lc.setIntensity(0,1);
+  /* and clear the display */
+  lc.clearDisplay(0);
+  setLEDBasedOnMode(Mode::MovingStraight);
 }
 
 void loop()
@@ -122,6 +141,7 @@ void loop()
   }
 
   runningMode = getNewModeBasedOnSensorResults(runningMode, resultRight, resultLeft);
+  setLEDBasedOnMode(runningMode);
 
   // Main switch case for determining what behaviour the robot should be doing, based on the current mode
   switch (runningMode)
@@ -304,6 +324,52 @@ Mode getNewModeBasedOnSensorResults(Mode previousMode, SensorResult resultRight,
   break;
   }
   return previousMode; // if no mode has been returned by any of the cases above, just return the previousMode
+}
+
+void setLEDBasedOnMode(Mode m) {
+  switch (m) {
+    case Mode::AligningWithClearPath: {
+      if (lastDetectedEdgeDirection == Direction::Left) {
+        Serial.println("Right");
+        setLEDTo(arrowRight);
+      } else {
+        setLEDTo(arrowLeft);
+        Serial.println("Left");
+      }
+    }
+    break;
+    case Mode::EmergencyBackup: {
+      setLEDTo(arrowBackward);
+      Serial.println("Back");
+    }
+    break;
+    case Mode::Error: {
+      setLEDTo(exlam);
+      Serial.println("Err");
+    }
+    break;
+    case Mode::FindingClearPath: {
+      if (lastDetectedEdgeDirection == Direction::Left) {
+        setLEDTo(arrowRight);
+        Serial.println("Left");
+      } else {
+        setLEDTo(arrowLeft);
+        Serial.println("Right");
+      }
+    }
+    break;
+    case Mode::MovingStraight: {
+      setLEDTo(arrowForward);
+      Serial.println("Forward");
+    }
+    break;
+  }
+}
+
+void setLEDTo(byte arr[]) {
+  for (int i = 0; i < 8; i++) {
+    lc.setColumn(0, i, arr[i]);
+  }
 }
 
 void forward()
