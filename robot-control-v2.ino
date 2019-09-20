@@ -15,22 +15,22 @@ byte arrowBackward[8]={B00001000,B00001100,B00001010,B11111001,B11111001,B000010
 /**
    Motor constants
 */
-const int MOTOR_SPEED_LOW = 160;
+const int MOTOR_SPEED_LOW = 20;
 const int MOTOR_SPEED_HIGH = 255;
 
 /**
    Setup motors
 */
-AF_DCMotor motorFrontRight(2);
-AF_DCMotor motorBackRight(1);
+AF_DCMotor motorFrontRight(3);
+AF_DCMotor motorBackRight(2);
 AF_DCMotor motorFrontLeft(4);
-AF_DCMotor motorBackLeft(3);
+AF_DCMotor motorBackLeft(1);
 
 /**
    Other constants
 */
-const int MAX_BACKUP_TIME = 300;
-const int MAX_ALIGNING_TIME = 400;
+const int MAX_BACKUP_TIME = 150;
+const int MAX_ALIGNING_TIME = 300;
 const int SENSOR_MAX_TIMEOUT = 500;
 const int EDGE_DET_THRES = 10; //how close does the table have to be to be considered a table (cm)
 
@@ -69,7 +69,7 @@ enum class Direction
    Global variables that change
 */
 // state that persists across loops
-int motorSpeed = MOTOR_SPEED_LOW;
+int motorSpeed = MOTOR_SPEED_HIGH;
 Direction lastDetectedEdgeDirection = Direction::Left;
 Mode runningMode = Mode::FindingClearPath;
 
@@ -80,8 +80,8 @@ int aligningTimeElapsed = 0; //how long have we been aligning with clear path in
 // pins
 int sensorRightTriggerPin = 53;
 int sensorRightEchoPin = 52;
-int sensorLeftTriggerPin = 51;
-int sensorLeftEchoPin = 50;
+int sensorLeftTriggerPin = 23;
+int sensorLeftEchoPin = 22;
 
 void setup()
 {
@@ -109,7 +109,7 @@ void setup()
   lc.setIntensity(0,1);
   /* and clear the display */
   lc.clearDisplay(0);
-  setLEDBasedOnMode(Mode::MovingStraight);
+  //setLEDBasedOnMode(Mode::MovingStraight);
 }
 
 void loop()
@@ -141,7 +141,7 @@ void loop()
   }
 
   runningMode = getNewModeBasedOnSensorResults(runningMode, resultRight, resultLeft);
-  setLEDBasedOnMode(runningMode);
+  //setLEDBasedOnMode(runningMode);
 
   // Main switch case for determining what behaviour the robot should be doing, based on the current mode
   switch (runningMode)
