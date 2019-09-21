@@ -15,7 +15,7 @@ byte arrowBackward[8]={B00001000,B00001100,B00001010,B11111001,B11111001,B000010
 /**
    Motor constants
 */
-const int MOTOR_SPEED_LOW = 20;
+const int MOTOR_SPEED_LOW = 120;
 const int MOTOR_SPEED_HIGH = 255;
 
 /**
@@ -30,9 +30,9 @@ AF_DCMotor motorBackLeft(1);
    Other constants
 */
 const int MAX_BACKUP_TIME = 150;
-const int MAX_ALIGNING_TIME = 300;
+const int MAX_ALIGNING_TIME = 800;
 const int SENSOR_MAX_TIMEOUT = 500;
-const int EDGE_DET_THRES = 10; //how close does the table have to be to be considered a table (cm)
+const int EDGE_DET_THRES = 5; //how close does the table have to be to be considered a table (cm)
 
 /**
    Enum representing possible modes the robot can be in during the run loop
@@ -69,7 +69,7 @@ enum class Direction
    Global variables that change
 */
 // state that persists across loops
-int motorSpeed = MOTOR_SPEED_HIGH;
+int motorSpeed = MOTOR_SPEED_LOW;
 Direction lastDetectedEdgeDirection = Direction::Left;
 Mode runningMode = Mode::FindingClearPath;
 
@@ -219,6 +219,7 @@ void loop()
   }
   break;
   }
+  // forward();
 }
 
 SensorResult getSensorResult(int sonicPulsePin, int echoInputPin, int maxTimeout)
