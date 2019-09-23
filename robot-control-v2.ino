@@ -3,7 +3,7 @@
 /**
    Motor constants
 */
-const int MOTOR_SPEED_LOW = 100;
+const int MOTOR_SPEED_LOW = 110;
 const int MOTOR_SPEED_HIGH = 255;
 
 /**
@@ -18,8 +18,8 @@ AF_DCMotor motorBackLeft(1);
    Other constants
 */
 const int MAX_BACKUP_TIME = 150;
-const int MAX_ALIGNING_TIME = 800;
-const int MIN_ALIGNING_TIME = 200;
+const int MAX_ALIGNING_TIME = 600; // 800 is ~180 degrees
+const int MIN_ALIGNING_TIME = 100;
 const int SENSOR_MAX_TIMEOUT = 500;
 const int EDGE_DET_THRES = 40; //how close does the table have to be to be considered a table (cm)
 
