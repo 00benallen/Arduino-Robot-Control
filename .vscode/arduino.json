@@ -1,5 +1,5 @@
 {
-    "port": "/dev/cu.usbmodem14101",
+    "port": "/dev/cu.usbmodem14201",
     "programmer": "AVR ISP",
     "board": "arduino:avr:mega",
     "configuration": "cpu=atmega2560",

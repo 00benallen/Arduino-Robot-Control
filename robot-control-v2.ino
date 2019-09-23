@@ -3,7 +3,7 @@
 /**
    Motor constants
 */
-const int MOTOR_SPEED_LOW = 120;
+const int MOTOR_SPEED_LOW = 100;
 const int MOTOR_SPEED_HIGH = 255;
 
 /**
@@ -19,8 +19,9 @@ AF_DCMotor motorBackLeft(1);
 */
 const int MAX_BACKUP_TIME = 150;
 const int MAX_ALIGNING_TIME = 800;
+const int MIN_ALIGNING_TIME = 200;
 const int SENSOR_MAX_TIMEOUT = 500;
-const int EDGE_DET_THRES = 5; //how close does the table have to be to be considered a table (cm)
+const int EDGE_DET_THRES = 40; //how close does the table have to be to be considered a table (cm)
 
 /**
    Enum representing possible modes the robot can be in during the run loop
@@ -64,12 +65,14 @@ Mode runningMode = Mode::FindingClearPath;
 // state that changes between loops
 int backupTimeElapsed = 0;   //how long have we been backing up in ms
 int aligningTimeElapsed = 0; //how long have we been aligning with clear path in ms
+int currentAligningValue = MAX_ALIGNING_TIME;
 
 // pins
 int sensorRightTriggerPin = 53;
 int sensorRightEchoPin = 52;
 int sensorLeftTriggerPin = 23;
 int sensorLeftEchoPin = 22;
+int randomSeedPin = 15;
 
 void setup()
 {
@@ -91,6 +94,7 @@ void setup()
   pinMode(sensorLeftTriggerPin, OUTPUT);
   pinMode(sensorRightEchoPin, INPUT);
   pinMode(sensorLeftEchoPin, INPUT);
+  randomSeed(analogRead(randomSeedPin));
 }
 
 void loop()
@@ -271,7 +275,11 @@ Mode getNewModeBasedOnSensorResults(Mode previousMode, SensorResult resultRight,
   { // if we're looking for a clear path and both sensors read table, then clear path has been found, start aligning
     if (resultRight == SensorResult::Table && resultRight == SensorResult::Table)
     { // both sensors are now seeing table
-      Serial.println("FindingClearPath: Both sensors see table, turning more to align");
+      currentAligningValue = random(MIN_ALIGNING_TIME, MAX_ALIGNING_TIME);
+      Serial.print("FindingClearPath: Both sensors see table, turning: to align ");
+      Serial.print(currentAligningValue);
+      Serial.println(" millis.");
+      
       return Mode::AligningWithClearPath;
     }
   }
