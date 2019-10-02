@@ -1,9 +1,22 @@
+#include <Servo.h>
 #include <AFMotor.h>
+
+/** Servo **/
+#include <Servo.h>
+Servo forwardServo;
+int servoPos = 0;
+int servoPosPin = 26;
+const unsigned long SWEEP_DELAY = 201;
+unsigned long timeOfLastSweep = 0;
+boolean sweepDirection = true;
+
+unsigned long timeSinceLastForwardCheck = 0;
+unsigned int FOR_CHECK_DELAY = 1000;
 
 /**
    Motor constants
 */
-const int MOTOR_SPEED_LOW = 110;
+const int MOTOR_SPEED_LOW = 180;
 const int MOTOR_SPEED_HIGH = 255;
 
 /**
@@ -17,9 +30,9 @@ AF_DCMotor motorBackLeft(1);
 /**
    Other constants
 */
-const int MAX_BACKUP_TIME = 150;
-const int MAX_ALIGNING_TIME = 600; // 800 is ~180 degrees
-const int MIN_ALIGNING_TIME = 100;
+const int MAX_BACKUP_TIME = 300;
+const int MAX_ALIGNING_TIME = 1200; // 800 is ~180 degrees
+const int MIN_ALIGNING_TIME = 200;
 const int SENSOR_MAX_TIMEOUT = 500;
 const int EDGE_DET_THRES = 40; //how close does the table have to be to be considered a table (cm)
 
@@ -32,6 +45,7 @@ enum class Mode
   FindingClearPath,      // robot is searching for a clear path
   AligningWithClearPath, // robot is aligning itself with a found clear path
   EmergencyBackup,       // robot is backing up (reversing) because an obstacle is directly in front
+  CheckForwardForObjects,
   Error,                 // robot is in an error state, not ready/not safe to drive
 };
 
@@ -40,8 +54,8 @@ enum class Mode
 */
 enum class SensorResult
 {
-  Edge,
-  Table,
+  Object,
+  Nothing,
   Error,
 };
 
@@ -59,7 +73,7 @@ enum class Direction
 */
 // state that persists across loops
 int motorSpeed = MOTOR_SPEED_LOW;
-Direction lastDetectedEdgeDirection = Direction::Left;
+Direction clearTurnDirection = Direction::Left;
 Mode runningMode = Mode::FindingClearPath;
 
 // state that changes between loops
@@ -72,6 +86,8 @@ int sensorRightTriggerPin = 53;
 int sensorRightEchoPin = 52;
 int sensorLeftTriggerPin = 23;
 int sensorLeftEchoPin = 22;
+int sensorForwardTriggerPin = 50;
+int sensorForwardEchoPin = 51;
 int randomSeedPin = 15;
 
 void setup()
@@ -92,9 +108,18 @@ void setup()
   // setup pins
   pinMode(sensorRightTriggerPin, OUTPUT);
   pinMode(sensorLeftTriggerPin, OUTPUT);
+  pinMode(sensorForwardTriggerPin, OUTPUT);
   pinMode(sensorRightEchoPin, INPUT);
   pinMode(sensorLeftEchoPin, INPUT);
+  pinMode(sensorForwardEchoPin, INPUT);
   randomSeed(analogRead(randomSeedPin));
+
+  forwardServo.attach(servoPosPin);
+  servoPos = 90;
+  timeOfLastSweep = millis();
+  forwardServo.write(0);
+  delay(15);
+  forwardServo.write(servoPos);
 }
 
 void loop()
@@ -102,8 +127,13 @@ void loop()
 
   long loopStart = millis(); // useful for timing of various processes in run loop
 
-  SensorResult resultRight = getSensorResult(sensorRightTriggerPin, sensorRightEchoPin, SENSOR_MAX_TIMEOUT);
-  SensorResult resultLeft = getSensorResult(sensorLeftTriggerPin, sensorLeftEchoPin, SENSOR_MAX_TIMEOUT);
+  SensorResult resultRight = getSensorResult(sensorRightTriggerPin, sensorRightEchoPin, SENSOR_MAX_TIMEOUT, EDGE_DET_THRES);
+  SensorResult resultLeft = getSensorResult(sensorLeftTriggerPin, sensorLeftEchoPin, SENSOR_MAX_TIMEOUT, EDGE_DET_THRES);
+  SensorResult resultForward = getSensorResult(sensorForwardTriggerPin, sensorForwardEchoPin, SENSOR_MAX_TIMEOUT, 10);
+
+  if (resultForward == SensorResult::Object) {
+    Serial.println("Object detected by servo sensor");
+  }
 
   if (resultLeft == SensorResult::Error)
   {
@@ -115,17 +145,21 @@ void loop()
     Serial.println("Right sensor not working!");
     runningMode = Mode::Error;
   }
-
-  if (resultRight == SensorResult::Edge)
-  {
-    lastDetectedEdgeDirection = Direction::Right;
-  }
-  else if (resultLeft == SensorResult::Edge)
-  {
-    lastDetectedEdgeDirection = Direction::Left;
+  if (resultForward == SensorResult::Error) {
+    Serial.println("Forward sensor not working!");
+    runningMode = Mode::Error;
   }
 
-  runningMode = getNewModeBasedOnSensorResults(runningMode, resultRight, resultLeft);
+  if (resultRight == SensorResult::Nothing)
+  {
+    clearTurnDirection = Direction::Right;
+  }
+  else if (resultLeft == SensorResult::Nothing)
+  {
+    clearTurnDirection = Direction::Left;
+  }
+
+  runningMode = getNewModeBasedOnSensorResults(runningMode, resultRight, resultLeft, resultForward);
 
   // Main switch case for determining what behaviour the robot should be doing, based on the current mode
   switch (runningMode)
@@ -141,7 +175,7 @@ void loop()
     else
     {
       Serial.print("EmergencyBackup: Emergency backup finished, beginning search for clear path in direction: ");
-      if (lastDetectedEdgeDirection == Direction::Right)
+      if (clearTurnDirection == Direction::Right)
       {
         Serial.println("left");
       }
@@ -157,7 +191,7 @@ void loop()
   break;
   case Mode::FindingClearPath:
   { // turn in a circle to find a clear way forward
-    if (lastDetectedEdgeDirection == Direction::Right)
+    if (clearTurnDirection == Direction::Right)
     {
       turnLeft();
     }
@@ -173,7 +207,7 @@ void loop()
 
     if (aligningTimeElapsed < MAX_ALIGNING_TIME)
     {
-      if (lastDetectedEdgeDirection == Direction::Right)
+      if (clearTurnDirection == Direction::Right)
       {
         turnLeft();
       }
@@ -184,16 +218,93 @@ void loop()
     }
     else
     {
-      Serial.println("AligningWithClearPath: Clear path alignment finished, starting to move forward");
+      Serial.println("AligningWithClearPath: Clear path alignment finished, starting to find a forward path");
       aligningTimeElapsed = 0;
-      runningMode = Mode::MovingStraight;
-      Serial.println("MovingStraight: Moving forward");
+      runningMode = Mode::CheckForwardForObjects;
+      Serial.println("CheckForwardForObjects: Beginning Check");
     }
+  }
+  break;
+  case Mode::CheckForwardForObjects: 
+  {
+    stop();
+
+    // check object left
+    forwardServo.write(20);
+    delay(SWEEP_DELAY);
+    SensorResult resultLeftForward = getSensorResult(
+      sensorForwardTriggerPin, 
+      sensorForwardEchoPin, 
+      SENSOR_MAX_TIMEOUT,
+      32);
+
+    // left of centre
+    forwardServo.write(55);
+    delay(SWEEP_DELAY);
+    SensorResult resultLeftCentreForward = getSensorResult(
+      sensorForwardTriggerPin, 
+      sensorForwardEchoPin, 
+      SENSOR_MAX_TIMEOUT,
+      32);
+
+    // check object center
+    forwardServo.write(90);
+    delay(SWEEP_DELAY);
+    SensorResult resultCentreForward = getSensorResult(
+      sensorForwardTriggerPin, 
+      sensorForwardEchoPin, 
+      SENSOR_MAX_TIMEOUT,
+      40);
+
+    // right of centre
+    forwardServo.write(125);
+    delay(SWEEP_DELAY);
+    SensorResult resultRightCentreForward = getSensorResult(
+      sensorForwardTriggerPin, 
+      sensorForwardEchoPin, 
+      SENSOR_MAX_TIMEOUT,
+      32);
+
+    // check object right
+    forwardServo.write(160);
+    delay(SWEEP_DELAY);
+    SensorResult resultRightForward = getSensorResult(
+      sensorForwardTriggerPin, 
+      sensorForwardEchoPin, 
+      SENSOR_MAX_TIMEOUT,
+      32);
+
+
+      if (resultLeftForward == SensorResult::Nothing && 
+         resultLeftCentreForward == SensorResult::Nothing &&
+         resultRightForward == SensorResult::Nothing &&
+         resultRightCentreForward == SensorResult::Nothing &&
+         resultRightForward == SensorResult::Nothing) {
+
+        Serial.println("CheckForwardForObjects: Forward path clear, starting to move forward");
+        runningMode = Mode::MovingStraight;
+        Serial.println("MovingStraight: Starting to move forward");
+
+      } else {
+
+        Serial.println("CheckForwardForObjects: Forward path unclear, restarting search for clear path");
+        runningMode = Mode::FindingClearPath;
+        Serial.println("FindingClearPath: Restarting...");
+
+      }
+      timeSinceLastForwardCheck = millis();
+      forwardServo.write(20);
   }
   break;
   case Mode::MovingStraight:
   { // way forward is clear, so go that way
     forward();
+
+    if (millis() - timeSinceLastForwardCheck > FOR_CHECK_DELAY) {
+      Serial.println("MovingStraight: Forward path no longer guaranteed clear, rechecking");
+      runningMode = Mode::CheckForwardForObjects;
+      Serial.println("CheckForwardForObjects: Rechecking...");
+    }
   }
   break;
   case Mode::Error:
@@ -203,10 +314,32 @@ void loop()
   }
   break;
   }
-  // forward();
 }
 
-SensorResult getSensorResult(int sonicPulsePin, int echoInputPin, int maxTimeout)
+void sweep(long loopStart) {
+
+  if (millis() - timeOfLastSweep >= SWEEP_DELAY) {
+    timeOfLastSweep = millis();
+    if (servoPos >= 180) {
+      sweepDirection = false;
+    } else if (servoPos <= 0) {
+      sweepDirection = true;
+    }
+
+    if (sweepDirection) {
+      servoPos += 1;
+      forwardServo.write(servoPos);
+    } else {
+      servoPos -= 1;
+      forwardServo.write(servoPos);
+    }
+
+  }
+}
+
+
+
+SensorResult getSensorResult(int sonicPulsePin, int echoInputPin, int maxTimeout, int distanceThreshold)
 {
   triggerSonicPulse(sonicPulsePin);
   long timeSpentHigh = waitForSignalUntilTimeout(echoInputPin, HIGH, 1000);
@@ -227,13 +360,13 @@ SensorResult getSensorResult(int sonicPulsePin, int echoInputPin, int maxTimeout
   long echoTime = micros() - echoStart;
   int distance = echoTime / 58; //centimeters
 
-  if (distance > EDGE_DET_THRES)
+  if (distance > distanceThreshold)
   {
-    return SensorResult::Edge;
+    return SensorResult::Nothing;
   }
   else
   {
-    return SensorResult::Table;
+    return SensorResult::Object;
   }
 }
 
@@ -262,7 +395,7 @@ long waitForSignalUntilTimeout(int pin, int level, int maxTimeout)
 }
 
 // use the previousMode and the sensor results to figure out what new Mode the robot should be in
-Mode getNewModeBasedOnSensorResults(Mode previousMode, SensorResult resultRight, SensorResult resultLeft)
+Mode getNewModeBasedOnSensorResults(Mode previousMode, SensorResult resultRight, SensorResult resultLeft, SensorResult resultForward)
 {
   switch (previousMode)
   {
@@ -273,7 +406,7 @@ Mode getNewModeBasedOnSensorResults(Mode previousMode, SensorResult resultRight,
   break;
   case Mode::FindingClearPath:
   { // if we're looking for a clear path and both sensors read table, then clear path has been found, start aligning
-    if (resultRight == SensorResult::Table && resultRight == SensorResult::Table)
+    if (resultRight == SensorResult::Object && resultRight == SensorResult::Object)
     { // both sensors are now seeing table
       currentAligningValue = random(MIN_ALIGNING_TIME, MAX_ALIGNING_TIME);
       Serial.print("FindingClearPath: Both sensors see table, turning: to align ");
@@ -291,12 +424,12 @@ Mode getNewModeBasedOnSensorResults(Mode previousMode, SensorResult resultRight,
   break;
   case Mode::MovingStraight:
   { // if we're currently moving forward, and an edge is detected, initiate an emergency backup and store the direction the edge was detected from
-    if (resultRight == SensorResult::Edge)
+    if (resultRight == SensorResult::Nothing)
     {
       Serial.println("MovingStraight: Right sensor has detected edge, initiating emergency backup");
       return Mode::EmergencyBackup;
     }
-    else if (resultLeft == SensorResult::Edge)
+    else if (resultLeft == SensorResult::Nothing)
     {
       Serial.println("MovingStraight: Left sensor has detected edge, initiating emergency backup");
       return Mode::EmergencyBackup;

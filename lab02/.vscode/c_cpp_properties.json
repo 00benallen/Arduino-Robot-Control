@@ -3,6 +3,7 @@
         {
             "name": "Mac",
             "includePath": [
+                "/Users/benpinhorn/code/Arduino/libraries/Servo/src",
                 "/Users/benpinhorn/code/Arduino/libraries/LedControl/src",
                 "/Users/benpinhorn/code/Arduino/libraries/adafruit-Adafruit-Motor-Shield-library-d815040",
                 "/Applications/Arduino.app/Contents/Java/tools/**",
