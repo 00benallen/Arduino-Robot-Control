@@ -13,7 +13,7 @@ unsigned int angles[] = { 20, 55, 90, 125, 160 };
 unsigned int forwardDetThreshold[] = { 18, 22, 28, 22, 18 };
 
 unsigned long timeSinceLastForwardCheck = 0;
-unsigned int FOR_CHECK_DELAY = 500;
+unsigned int FOR_CHECK_DELAY = 300;
 
 /**
    Motor constants
@@ -35,7 +35,7 @@ AF_DCMotor motorBackLeft(1);
 const int MAX_BACKUP_TIME_MAX = 300;
 const int MAX_BACKUP_TIME_MIN = 100;
 int backupTime = MAX_BACKUP_TIME_MAX;
-const int MAX_ALIGNING_TIME = 1200; // 800 is ~180 degrees
+const int MAX_ALIGNING_TIME = 1000; // 800 is ~180 degrees
 const int MIN_ALIGNING_TIME = 200;
 const unsigned long SENSOR_MAX_TIMEOUT = 10000;
 const int EDGE_DET_THRES = 40; //how close does the table have to be to be considered a table (cm)
@@ -164,7 +164,7 @@ void loop()
 
   SensorResult resultBump = SensorResult::Nothing;
 
-  if (angle > restingAngle && angle - restingAngle > 10) {
+  if (angle > restingAngle && angle - restingAngle > 5) {
     resultBump = SensorResult::Object;
   }
 
