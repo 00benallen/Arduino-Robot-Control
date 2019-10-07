@@ -10,10 +10,10 @@ const unsigned long SWEEP_DELAY = 200;
 unsigned long timeOfLastSweep = 0;
 boolean sweepDirection = true;
 unsigned int angles[] = { 20, 55, 90, 125, 160 };
-unsigned int forwardDetThreshold[] = { 18, 22, 28, 22, 18 };
+unsigned int forwardDetThreshold[] = { 20, 24, 28, 24, 20 };
 
 unsigned long timeSinceLastForwardCheck = 0;
-unsigned int FOR_CHECK_DELAY = 300;
+unsigned int FOR_CHECK_DELAY = 200;
 
 /**
    Motor constants
@@ -32,10 +32,10 @@ AF_DCMotor motorBackLeft(1);
 /**
    Other constants
 */
-const int MAX_BACKUP_TIME_MAX = 300;
+const int MAX_BACKUP_TIME_MAX = 250;
 const int MAX_BACKUP_TIME_MIN = 100;
 int backupTime = MAX_BACKUP_TIME_MAX;
-const int MAX_ALIGNING_TIME = 1000; // 800 is ~180 degrees
+const int MAX_ALIGNING_TIME = 700; // 800 is ~180 degrees
 const int MIN_ALIGNING_TIME = 200;
 const unsigned long SENSOR_MAX_TIMEOUT = 10000;
 const int EDGE_DET_THRES = 40; //how close does the table have to be to be considered a table (cm)
