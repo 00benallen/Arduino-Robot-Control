@@ -9,10 +9,11 @@ int servoPosPin = 10;
 const unsigned long SWEEP_DELAY = 200;
 unsigned long timeOfLastSweep = 0;
 boolean sweepDirection = true;
-unsigned int angles[] = { 40, 65, 90, 115, 120 };
+unsigned int angles[] = { 20, 55, 90, 125, 160 };
+unsigned int forwardDetThreshold[] = { 18, 22, 28, 22, 18 };
 
 unsigned long timeSinceLastForwardCheck = 0;
-unsigned int FOR_CHECK_DELAY = 1000;
+unsigned int FOR_CHECK_DELAY = 500;
 
 /**
    Motor constants
@@ -154,7 +155,6 @@ float bumpSensorReading() {
   // Use the calculated resistance to estimate the sensor's
   // bend angle:
   float angle = map(flexR, STRAIGHT_RESISTANCE, BEND_RESISTANCE, 0, 90.0);
-  Serial.println(angle);
   return angle;
 }
 
@@ -265,7 +265,7 @@ void loop()
 
           forwardServo.write(angles[i]);
           delay(SWEEP_DELAY);
-          SensorResult result = getSensorResult(sensorForwardTriggerPin, sensorForwardEchoPin, SENSOR_MAX_TIMEOUT, 30);
+          SensorResult result = getSensorResult(sensorForwardTriggerPin, sensorForwardEchoPin, SENSOR_MAX_TIMEOUT, forwardDetThreshold[i]);
 
           if (result == SensorResult::Object) {
             clearPath = false;
