@@ -12,9 +12,13 @@ SonicSensor::SonicSensor(unsigned int triggerPin, unsigned int echoPin, unsigned
 void SonicSensor::init() {
   pinMode(this->triggerPin, OUTPUT);
   pinMode(this->echoPin, INPUT);
+  if (Serial) {
+    Serial.print("Sonic Sensor initialized using pins "); Serial.print(triggerPin); Serial.print(" and "); Serial.println(echoPin);
+  }
 }
 
 void SonicSensor::trigger() {
+  Serial.print("Triggering sonic sensor on pin "); Serial.println(this->triggerPin);
   digitalWrite(this->triggerPin, LOW);
   delayMicroseconds(2);
   digitalWrite(this->triggerPin, HIGH);
@@ -22,11 +26,15 @@ void SonicSensor::trigger() {
   digitalWrite(this->triggerPin, LOW);
   delayMicroseconds(2);
 
+  Serial.print("Reading pulse on pin "); Serial.println(this->echoPin);
   unsigned long duration = pulseIn(this->echoPin, HIGH, this->timeout);
 
   if (duration == 0) {
     this->lastDistance = -1;
     this->lastResult = SensorResult::Error;
+    if (Serial) {
+      Serial.print("Timeout detected on sonic sensor after "); Serial.print(this->timeout); Serial.println(" microseconds");
+    }
     return;
   }
   
@@ -46,4 +54,23 @@ unsigned long SonicSensor::getDistance() {
 
 SensorResult SonicSensor::getResult() {
   return this->lastResult;
+}
+
+IRSensor::IRSensor(unsigned int outPin) {
+  this->outPin = outPin;
+}
+
+void IRSensor::init() {
+  pinMode(outPin, INPUT);
+  if (Serial) {
+    Serial.print("Infrared Sensor initialized using pin "); Serial.println(this->outPin);
+  }
+}
+
+SensorResult IRSensor::getResult() {
+  if (digitalRead(this->outPin) == LOW) {
+    return SensorResult::Object;
+  } else {
+    return SensorResult::Nothing;
+  }
 }

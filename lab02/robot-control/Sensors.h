@@ -29,4 +29,13 @@ class SonicSensor
     SensorResult lastResult;
 };
 
+class IRSensor {
+  public:
+    IRSensor(unsigned int outPin);
+    void init();
+    SensorResult getResult();
+  private:
+    unsigned int outPin;
+};
+
 #endif
