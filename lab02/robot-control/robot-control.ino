@@ -42,6 +42,18 @@ const unsigned long SENSOR_MAX_TIMEOUT = 2915;
 Ultrasonic forwardDownSensor(sonicSensorDownTriggerPin, sonicSensorDownEchoPin, SENSOR_MAX_TIMEOUT);
 IRSensor forwardObjectSensor(IRSensorForwardOutPin);
 
+#include "Adafruit_VL53L0X.h"
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+float lastDetectedHeading;
+
+
+
+
 /**
    Enum representing possible modes the robot can be in during the run loop
 */
@@ -73,7 +85,7 @@ Mode runningMode = Mode::CheckForwardForObjects;
 
 // state that changes between loops
 int backupTimeElapsed = 0;   //how long have we been backing up in ms
-int aligningTimeElapsed = 0; //how long have we been aligning with clear path in ms
+float aligningStartHeading;
 int currentAligningValue = MAX_ALIGNING_TIME;
 
 // auxilliary pins
@@ -97,6 +109,21 @@ void setup()
   motorFrontLeft.run(RELEASE);
   motorBackLeft.setSpeed(motorSpeed);
   motorBackLeft.run(RELEASE);
+
+  Serial.println("Initializing BNO055 9-axis IMU");
+  while (!bno.begin())
+  {
+    Serial.println("No BNO055 detected");
+    delay(1000);
+  }
+  Serial.println("BNO055 9-axis IMU detected and initialized");
+
+  Serial.println("Initializing VL53LDK laser TOF sensor");
+  while (!lox.begin()) {
+    Serial.println(F("No VL53LDK detected"));
+    delay(1000);
+  }
+  Serial.println("VL53LDK laser TOF sensor detected");
 
   Serial.println("Initializing sonic sensors");
   //forwardDownSensor.init();
@@ -123,6 +150,7 @@ void loop()
 {
 
   long loopStart = millis(); // useful for timing of various processes in run loop
+  pollIMU();
 
   // Main switch case for determining what behaviour the robot should be doing, based on the current mode
   switch (runningMode)
@@ -149,30 +177,34 @@ void loop()
 
           backupTimeElapsed = 0;
           Serial.println("EmergencyBackup: Complete, beginning turn to find clear path");
+          aligningStartHeading = lastDetectedHeading;
           runningMode = Mode::AligningWithClearPath;
-          
+
         }
       }
       break;
     case Mode::AligningWithClearPath:
       { // turn to align the robot with the currently detected clear path
-        aligningTimeElapsed += millis() - loopStart;
-
-        if (aligningTimeElapsed < MAX_ALIGNING_TIME)
-        {
-          if (clearTurnDirection == Direction::Right)
+        if (motorsEnabled) {
+          float amountTurned = 180 - abs(abs(lastDetectedHeading - aligningStartHeading) - 180);
+          if (amountTurned <= 90)
           {
-            turnLeft();
+            if (clearTurnDirection == Direction::Right)
+            {
+              turnLeft();
+            }
+            else
+            {
+              turnRight();
+            }
           }
           else
           {
-            turnRight();
+            Serial.println("AligningWithClearPath: Clear path alignment finished, starting to find a forward path");
+            runningMode = Mode::CheckForwardForObjects;
           }
-        }
-        else
-        {
-          Serial.println("AligningWithClearPath: Clear path alignment finished, starting to find a forward path");
-          aligningTimeElapsed = 0;
+        } else {
+          Serial.println("AligningWithClearPath: Clear path alignment finished (motors disabled), starting to find a forward path");
           runningMode = Mode::CheckForwardForObjects;
         }
       }
@@ -190,7 +222,6 @@ void loop()
 
           if (downDistance >= EDGE_DET_THRES) {
             Serial.println("CheckForwardForObjects: Edge detected during sweep, reseting servo and initiating emergency backup");
-            Serial.println(downDistance);
             runningMode = Mode::EmergencyBackup;
             edgeDetected = true;
             break;
@@ -199,7 +230,18 @@ void loop()
           SensorResult objectResult = forwardObjectSensor.getResult();
 
           if (objectResult == SensorResult::Object) {
-            Serial.println("CheckForwardForObjects: Object detected during sweep, reseting servo and initiating emergency backup");
+            Serial.println("CheckForwardForObjects: Object detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+            runningMode = Mode::EmergencyBackup;
+            edgeDetected = true;
+            break;
+          }
+
+          VL53L0X_RangingMeasurementData_t measure;
+
+          lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+
+          if (measure.RangeStatus == VL53L0X_ERROR_NONE && measure.RangeMilliMeter <= 300) {
+            Serial.println("CheckForwardForObjects: Object detected during sweep by laser TOF sensor, reseting servo and initiating emergency backup");
             runningMode = Mode::EmergencyBackup;
             edgeDetected = true;
             break;
@@ -238,12 +280,22 @@ void loop()
         stop();
         if (forwardDownSensor.read() != 0) {
           Serial.println("Error: Forward sonic sensor working again!");
+          aligningStartHeading = lastDetectedHeading;
           runningMode = Mode::AligningWithClearPath;
         }
         delay(1000);
       }
       break;
   }
+}
+
+void pollIMU() {
+  unsigned long tStart = micros();
+  sensors_event_t orientationData;
+  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+  lastDetectedHeading = orientationData.orientation.x;
+  //  Serial.print("Heading: ");
+  //  Serial.println(lastDetectedHeading);
 }
 
 void forward()
