@@ -3,12 +3,12 @@
 Servo forwardServo;
 int servoPos = 0;
 int servoPosPin = 10;
-const unsigned long SWEEP_DELAY = 200;
+const unsigned long SWEEP_DELAY = 300;
 unsigned long timeOfLastSweep = 0;
 unsigned int servoAngle = 0;
 
 unsigned long timeSinceLastForwardCheck = 0;
-unsigned int FOR_CHECK_DELAY = 2000;
+unsigned int FOR_CHECK_DELAY = 1000;
 
 /** Motors **/
 
@@ -21,6 +21,8 @@ AF_DCMotor motorBackLeft(1);
 const int MOTOR_SPEED_LOW = 180;
 const int MOTOR_SPEED_HIGH = 255;
 
+int randomTurnAmount = 90;
+
 /** Timing Constants **/
 const int MAX_BACKUP_TIME_MAX = 300;
 const int MAX_BACKUP_TIME_MIN = 100;
@@ -30,7 +32,7 @@ const int MIN_ALIGNING_TIME = 200;
 
 /** Sensors **/
 #include "Sensors.h"
-#include "Ultrasonic.h"
+//#include "Ultrasonic.h"
 int sonicSensorDownTriggerPin = 52;
 int sonicSensorDownEchoPin = 53;
 int IRSensorForwardOutPin = 23;
@@ -38,12 +40,10 @@ int IRSensorForwardOutPin = 23;
 const int EDGE_DET_THRES = 40;
 const unsigned long SENSOR_MAX_TIMEOUT = 2915;
 
-//SonicSensor forwardDownSensor(sonicSensorDownTriggerPin, sonicSensorDownEchoPin, EDGE_DET_THRES, SENSOR_MAX_TIMEOUT);
-Ultrasonic forwardDownSensor(sonicSensorDownTriggerPin, sonicSensorDownEchoPin, SENSOR_MAX_TIMEOUT);
-IRSensor forwardObjectSensor(IRSensorForwardOutPin);
+IRSensor forwardDownSensor(IRSensorForwardOutPin);
 
-#include "Adafruit_VL53L0X.h"
-Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+#include <VL53L0X.h>
+VL53L0X forwardObjectSensor;
 
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
@@ -51,7 +51,8 @@ Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 float lastDetectedHeading;
 
-
+#include "Adafruit_VL53L0X.h"
+Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 
 /**
@@ -92,7 +93,7 @@ int currentAligningValue = MAX_ALIGNING_TIME;
 int randomSeedPin = 15;
 
 // Debug
-bool motorsEnabled = false;
+bool motorsEnabled = true;
 
 void setup()
 {
@@ -118,18 +119,16 @@ void setup()
   }
   Serial.println("BNO055 9-axis IMU detected and initialized");
 
-  Serial.println("Initializing VL53LDK laser TOF sensor");
+  Serial.println("Initializing VL53L0X laser TOF sensor");
+  Serial.println("Adafruit VL53L0X test");
   while (!lox.begin()) {
-    Serial.println(F("No VL53LDK detected"));
+    Serial.println(F("Failed to boot VL53L0X"));
     delay(1000);
   }
-  Serial.println("VL53LDK laser TOF sensor detected");
-
-  Serial.println("Initializing sonic sensors");
-  //forwardDownSensor.init();
+  Serial.println("VL53L0X laser TOF sensor detected");
 
   Serial.println("Initializing IR sensors");
-  forwardObjectSensor.init();
+  forwardDownSensor.init();
 
   Serial.println("Initializing auxilliary pins");
   pinMode(IRSensorForwardOutPin, INPUT);
@@ -168,17 +167,18 @@ void loop()
           Serial.print("EmergencyBackup: Emergency backup finished, beginning search for clear path in direction: ");
           if (clearTurnDirection == Direction::Right)
           {
-            Serial.println("left");
+            Serial.println("right");
           }
           else
           {
-            Serial.println("right");
+            Serial.println("left");
           }
 
           backupTimeElapsed = 0;
           Serial.println("EmergencyBackup: Complete, beginning turn to find clear path");
           aligningStartHeading = lastDetectedHeading;
           runningMode = Mode::AligningWithClearPath;
+          randomTurnAmount = random(10, 90);
 
         }
       }
@@ -191,11 +191,11 @@ void loop()
           {
             if (clearTurnDirection == Direction::Right)
             {
-              turnLeft();
+              turnRight();
             }
             else
             {
-              turnRight();
+              turnLeft();
             }
           }
           else
@@ -218,44 +218,61 @@ void loop()
         while (servoAngle <= 180) {
           forwardServo.write(servoAngle);
           servoAngle += 10;
-          unsigned long downDistance = forwardDownSensor.read();
 
-          if (downDistance >= EDGE_DET_THRES) {
-            Serial.println("CheckForwardForObjects: Edge detected during sweep, reseting servo and initiating emergency backup");
+          SensorResult objectResult = forwardDownSensor.getResult();
+
+          if (objectResult == SensorResult::Nothing) {
+
+            if (servoAngle <= 90) {
+              clearTurnDirection = Direction::Left; // turn the other way
+              Serial.println("CheckForwardForObjects: Edge on right side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+            } else {
+              Serial.println("CheckForwardForObjects: Edge on left side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+              clearTurnDirection = Direction::Right; // turn the other way
+            }
             runningMode = Mode::EmergencyBackup;
             edgeDetected = true;
             break;
           }
 
-          SensorResult objectResult = forwardObjectSensor.getResult();
+          bool laserError = false;
+          unsigned long distanceS = 0;
+          for (int i = 0; i < 10; i++) {
+            VL53L0X_RangingMeasurementData_t measure;
+            lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
 
-          if (objectResult == SensorResult::Object) {
-            Serial.println("CheckForwardForObjects: Object detected during sweep by IR sensor, reseting servo and initiating emergency backup");
-            runningMode = Mode::EmergencyBackup;
+            if (measure.RangeStatus != 4) {  // phase failures have incorrect data
+              distanceS += measure.RangeMilliMeter;
+        
+              Serial.print("Distance (mm): "); Serial.println(measure.RangeMilliMeter);
+              Serial.print("Status: "); Serial.println(measure.RangeStatus);
+            } else {
+              Serial.println(" out of range ");
+              laserError = true;
+            }
+          }
+
+          if (distanceS / 10 <= 200 && !laserError) {
+            Serial.print("Sum of distances was: "); Serial.print(distanceS); Serial.print(" Average distance was: "); Serial.println(distanceS / 3);
+            if (servoAngle <= 90) {
+              clearTurnDirection = Direction::Left; // turn the other way
+              Serial.println("CheckForwardForObjects: Object on right side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+            } else {
+              Serial.println("CheckForwardForObjects: Object on left side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+              clearTurnDirection = Direction::Right; // turn the other way
+            }
+            aligningStartHeading = lastDetectedHeading;
+            runningMode = Mode::AligningWithClearPath;
+            randomTurnAmount = random(10, 90);
             edgeDetected = true;
             break;
           }
 
-          VL53L0X_RangingMeasurementData_t measure;
-
-          lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
-
-          if (measure.RangeStatus == VL53L0X_ERROR_NONE && measure.RangeMilliMeter <= 300) {
-            Serial.println("CheckForwardForObjects: Object detected during sweep by laser TOF sensor, reseting servo and initiating emergency backup");
-            runningMode = Mode::EmergencyBackup;
-            edgeDetected = true;
-            break;
-          }
-
-          delay(500);
+          delay(SWEEP_DELAY);
         }
-
-        Serial.println("CheckForwardForObjects: Resetting forward servo");
-        while (servoAngle > 0) {
-          servoAngle -= 10;
-          forwardServo.write(servoAngle);
-          delay(500);
-        }
+        
+        servoAngle = 0;
+        forwardServo.write(servoAngle);
         timeSinceLastForwardCheck = millis();
 
         if (!edgeDetected) {
@@ -278,11 +295,15 @@ void loop()
       { // something is wrong with Arduino or its peripheral devices, stop to keep the robot safe
         Serial.println("Error: Issue with setup, robot not safe to move! Polling sensors...");
         stop();
-        if (forwardDownSensor.read() != 0) {
-          Serial.println("Error: Forward sonic sensor working again!");
-          aligningStartHeading = lastDetectedHeading;
-          runningMode = Mode::AligningWithClearPath;
-        }
+
+        //        VL53L0X_RangingMeasurementData_t measure;
+        //        forwardObjectSensor.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+        //
+        //        if (measure.RangeStatus == VL53L0X_ERROR_NONE) {
+        //          Serial.println("Error: Forward sonic sensor working again!");
+        //          aligningStartHeading = lastDetectedHeading;
+        //          runningMode = Mode::AligningWithClearPath;
+        //        }
         delay(1000);
       }
       break;
