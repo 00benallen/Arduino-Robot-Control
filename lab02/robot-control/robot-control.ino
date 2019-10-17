@@ -3,12 +3,12 @@
 Servo forwardServo;
 int servoPos = 0;
 int servoPosPin = 10;
-const unsigned long SWEEP_DELAY = 300;
+const unsigned long SWEEP_DELAY = 50;
 unsigned long timeOfLastSweep = 0;
 unsigned int servoAngle = 0;
 
 unsigned long timeSinceLastForwardCheck = 0;
-unsigned int FOR_CHECK_DELAY = 1000;
+unsigned int FOR_CHECK_DELAY = 750;
 
 /** Motors **/
 
@@ -217,7 +217,7 @@ void loop()
         bool edgeDetected = false;
         while (servoAngle <= 180) {
           forwardServo.write(servoAngle);
-          servoAngle += 10;
+          servoAngle += 5;
 
           SensorResult objectResult = forwardDownSensor.getResult();
 
@@ -237,7 +237,7 @@ void loop()
 
           bool laserError = false;
           unsigned long distanceS = 0;
-          for (int i = 0; i < 10; i++) {
+          for (int i = 0; i < 5; i++) {
             VL53L0X_RangingMeasurementData_t measure;
             lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
 
@@ -252,7 +252,7 @@ void loop()
             }
           }
 
-          if (distanceS / 10 <= 200 && !laserError) {
+          if (distanceS / 5 <= 200 && !laserError) {
             Serial.print("Sum of distances was: "); Serial.print(distanceS); Serial.print(" Average distance was: "); Serial.println(distanceS / 3);
             if (servoAngle <= 90) {
               clearTurnDirection = Direction::Left; // turn the other way
