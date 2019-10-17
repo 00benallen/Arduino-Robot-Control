@@ -36,11 +36,15 @@ const int MIN_ALIGNING_TIME = 200;
 int sonicSensorDownTriggerPin = 52;
 int sonicSensorDownEchoPin = 53;
 int IRSensorForwardOutPin = 23;
+int IRSensorLineLeftOutPin = 30;
+int IRSensorLineRightOutPin = 50;
 
 const int EDGE_DET_THRES = 40;
 const unsigned long SENSOR_MAX_TIMEOUT = 2915;
 
 IRSensor forwardDownSensor(IRSensorForwardOutPin);
+IRSensor forwardLineLeftSensor(IRSensorLineLeftOutPin);
+IRSensor forwardLineRightSensor(IRSensorLineRightOutPin);
 
 #include <VL53L0X.h>
 VL53L0X forwardObjectSensor;
@@ -64,6 +68,7 @@ enum class Mode
   AligningWithClearPath, // robot is aligning itself with a found clear path
   EmergencyBackup,       // robot is backing up (reversing) because an obstacle is directly in front
   CheckForwardForObjects,
+  FollowingLine,
   Error,                 // robot is in an error state, not ready/not safe to drive
 };
 
@@ -82,7 +87,7 @@ enum class Direction
 // state that persists across loops
 int motorSpeed = MOTOR_SPEED_LOW;
 Direction clearTurnDirection = Direction::Left;
-Mode runningMode = Mode::CheckForwardForObjects;
+Mode runningMode = Mode::FollowingLine;
 
 // state that changes between loops
 int backupTimeElapsed = 0;   //how long have we been backing up in ms
@@ -93,7 +98,7 @@ int currentAligningValue = MAX_ALIGNING_TIME;
 int randomSeedPin = 15;
 
 // Debug
-bool motorsEnabled = true;
+bool motorsEnabled = false;
 
 void setup()
 {
@@ -129,6 +134,8 @@ void setup()
 
   Serial.println("Initializing IR sensors");
   forwardDownSensor.init();
+  forwardLineLeftSensor.init();
+  forwardLineRightSensor.init();
 
   Serial.println("Initializing auxilliary pins");
   pinMode(IRSensorForwardOutPin, INPUT);
@@ -243,7 +250,7 @@ void loop()
 
             if (measure.RangeStatus != 4) {  // phase failures have incorrect data
               distanceS += measure.RangeMilliMeter;
-        
+
               Serial.print("Distance (mm): "); Serial.println(measure.RangeMilliMeter);
               Serial.print("Status: "); Serial.println(measure.RangeStatus);
             } else {
@@ -270,7 +277,7 @@ void loop()
 
           delay(SWEEP_DELAY);
         }
-        
+
         servoAngle = 0;
         forwardServo.write(servoAngle);
         timeSinceLastForwardCheck = millis();
@@ -279,6 +286,24 @@ void loop()
           Serial.println("CheckForwardForObjects: Sweep complete, path forward clear, continuing forward");
           runningMode = Mode::MovingStraight;
         }
+      }
+      break;
+    case Mode::FollowingLine: {
+        SensorResult left = forwardLineLeftSensor.getResult();
+        SensorResult right = forwardLineRightSensor.getResult();
+      
+        if (left == SensorResult::Nothing) {
+          Serial.println("Nothing left");
+        } else {
+          Serial.println("Something left");
+        }
+      
+        if (right == SensorResult::Nothing) {
+          Serial.println("Nothing right");
+        } else {
+          Serial.println("Something right");
+        }
+        
       }
       break;
     case Mode::MovingStraight:
