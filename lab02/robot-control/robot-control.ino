@@ -3,12 +3,13 @@
 Servo forwardServo;
 int servoPos = 0;
 int servoPosPin = 10;
-const unsigned long SWEEP_DELAY = 50;
+const unsigned long SWEEP_DELAY = 40;
 unsigned long timeOfLastSweep = 0;
 unsigned int servoAngle = 0;
 
 unsigned long timeSinceLastForwardCheck = 0;
-unsigned int FOR_CHECK_DELAY = 250;
+unsigned int FOR_CHECK_DELAY_NORMAL = 350;
+unsigned int FOR_CHECK_DELAY_LINE = 500;
 
 /** Motors **/
 
@@ -29,20 +30,24 @@ const int MAX_BACKUP_TIME_MIN = 100;
 int backupTime = MAX_BACKUP_TIME_MAX;
 const int MAX_ALIGNING_TIME = 1200;
 const int MIN_ALIGNING_TIME = 200;
-const int MAX_LINE_FORWARD_MOVE_TIME = 100;
 
 /** Sensors **/
 #include "Sensors.h"
 #include "Ultrasonic.h"
 int sonicSensorDownTriggerPin = 26;
 int sonicSensorDownEchoPin = 23;
-int IRSensorLineLeftOutPin = 30;
-int IRSensorLineRightOutPin = 50;
+int IRSensorLineLeftOutPin1 = 33;
+int IRSensorLineRightOutPin1 = 53;
+int IRSensorLineLeftOutPin2 = 35;
+int IRSensorLineRightOutPin2 = 30;
 
 const int EDGE_DET_THRES = 40;
 const unsigned long SENSOR_MAX_TIMEOUT = 2915;
 
-IRSensor forwardLineSensor(IRSensorLineLeftOutPin);
+IRSensor forwardLineRightSensor1(IRSensorLineLeftOutPin1);
+IRSensor forwardLineLeftSensor1(IRSensorLineRightOutPin1);
+IRSensor forwardLineRightSensor2(IRSensorLineLeftOutPin2);
+IRSensor forwardLineLeftSensor2(IRSensorLineRightOutPin2);
 
 Ultrasonic forwardEdgeSensor(sonicSensorDownTriggerPin, sonicSensorDownEchoPin, SENSOR_MAX_TIMEOUT);
 
@@ -86,8 +91,12 @@ enum class Direction
 Direction turningDirection = Direction::Left;
 unsigned long timeElapsedLineForward = 0;
 unsigned long timeElapsedLineTurn = 0;
+bool followingLine = false;
 bool lineDetected = false;
+bool ignoreLine = false;
 unsigned int lineTurnAmount = 0;
+unsigned int lineSearchTurns = 0;
+Direction lastLineSearchDirection = Direction::Left;
 
 /**
    Global variables that change
@@ -141,7 +150,10 @@ void setup()
   Serial.println("VL53L0X laser TOF sensor detected");
 
   Serial.println("Initializing IR sensors");
-  forwardLineSensor.init();
+  forwardLineRightSensor1.init();
+  forwardLineLeftSensor1.init();
+  forwardLineRightSensor2.init();
+  forwardLineLeftSensor2.init();
 
   Serial.println("Initializing auxilliary pins");
   pinMode(randomSeedPin, INPUT);
@@ -162,8 +174,9 @@ void loop()
 
   long loopStart = millis(); // useful for timing of various processes in run loop
   pollIMU();
-  pollLineSensor();
-
+  if (!ignoreLine) {
+    pollLineSensor();
+  }
 
   // Main switch case for determining what behaviour the robot should be doing, based on the current mode
   switch (runningMode)
@@ -201,7 +214,7 @@ void loop()
       { // turn to align the robot with the currently detected clear path
         if (motorsEnabled) {
 
-          if (lineDetected) { // line detected
+          if (followingLine && !ignoreLine) { // line detected
             // drive forward a certain amount
             aligningStartHeading = lastDetectedHeading;
             Serial.println("AligningWithClearPath: Line detected");
@@ -226,10 +239,12 @@ void loop()
           {
             Serial.println("AligningWithClearPath: Clear path alignment finished, starting to find a forward path");
             runningMode = Mode::CheckForwardForObjects;
+            ignoreLine = false;
           }
         } else {
           Serial.println("AligningWithClearPath: Clear path alignment finished (motors disabled), starting to find a forward path");
           runningMode = Mode::CheckForwardForObjects;
+          ignoreLine = false;
         }
       }
       break;
@@ -255,6 +270,8 @@ void loop()
             }
             runningMode = Mode::EmergencyBackup;
             edgeDetected = true;
+            ignoreLine = true;
+            followingLine = false;
             break;
           }
 
@@ -284,6 +301,8 @@ void loop()
             runningMode = Mode::AligningWithClearPath;
             randomTurnAmount = random(10, 90);
             edgeDetected = true;
+            ignoreLine = true;
+            followingLine = false;
             break;
           }
 
@@ -294,13 +313,23 @@ void loop()
         forwardServo.write(servoAngle);
         timeSinceLastForwardCheck = millis();
 
-        if (!edgeDetected) {
+        if (!edgeDetected && !followingLine) {
           Serial.println("CheckForwardForObjects: Sweep complete, path forward clear, continuing forward");
-          runningMode = Mode::MovingStraight;
+          runningMode = Mode::MovingStraight; 
+        } else if (followingLine && !ignoreLine) {
+          Serial.println("CheckForwardForObjects: Line detected");
+          runningMode = Mode::FollowingLine;
         }
       }
       break;
     case Mode::FollowingLine: {
+
+        if (millis() - timeSinceLastForwardCheck > FOR_CHECK_DELAY_LINE) {
+          Serial.println("MovingStraight: Forward path no longer guaranteed clear, rechecking");
+          runningMode = Mode::CheckForwardForObjects;
+          break;
+        }
+      
         if (lineDetected) {
           Serial.println("FollowingLine: Line detected, following.");
           forward();
@@ -308,13 +337,14 @@ void loop()
           Serial.println("FollowingLine: Line lost");
           aligningStartHeading = lastDetectedHeading;
           lineTurnAmount = 45;
-          turningDirection = Direction::Left;
+          turningDirection = lastLineSearchDirection;
           runningMode = Mode::FindingLine;
         }
       }
       break;
     case Mode::FindingLine:
       {
+        
         if (lineDetected) {
           stop();
           Serial.println("FindingLine: Line detected, following.");
@@ -324,29 +354,33 @@ void loop()
 
         float amountTurned = 180 - abs(abs(lastDetectedHeading - aligningStartHeading) - 180);
 
-//        if ((int) amountTurned % 10 == 0) {
-//          stop();
-//          delay(100);
-//        }
-
         Serial.print("Turned: "); Serial.print(amountTurned); Serial.print(" out of: "); Serial.println(lineTurnAmount);
         if (amountTurned <= lineTurnAmount) {
           if (turningDirection == Direction::Left) {
             Serial.println("FindingLine: Line not detected, looking, turning left");
+            lastLineSearchDirection = Direction::Left;
             turnLeft();
           } else {
             Serial.println("FindingLine: Line not detected, looking, turning right");
+            lastLineSearchDirection = Direction::Right;
             turnRight();
           }
         } else {
-          if (turningDirection == Direction::Left) {
+          lineSearchTurns++;
+          if (lineSearchTurns == 1) {
             Serial.println("FindingLine: Line not detected, looking, switching turn direction");
-            turningDirection = Direction::Right;
+            if (turningDirection == Direction::Right) {
+              turningDirection = Direction::Left;
+            } else {
+              turningDirection = Direction::Right;
+            }
             lineTurnAmount = 90;
             aligningStartHeading = lastDetectedHeading;
-          } else {
+          } else if (lineSearchTurns == 2) {
             Serial.println("FindingLine: Line not detected, line must've ended");
             runningMode = Mode::CheckForwardForObjects;
+            followingLine = false;
+            lineSearchTurns = 0;
           }
         }
       }
@@ -355,13 +389,12 @@ void loop()
       { // way forward is clear, so go that way
         forward();
 
-        if (millis() - timeSinceLastForwardCheck > FOR_CHECK_DELAY) {
+        if (millis() - timeSinceLastForwardCheck > FOR_CHECK_DELAY_NORMAL) {
           Serial.println("MovingStraight: Forward path no longer guaranteed clear, rechecking");
           runningMode = Mode::CheckForwardForObjects;
         }
 
-        if (lineDetected) {
-          // drive forward a certain amount
+        if (followingLine) {
           aligningStartHeading = lastDetectedHeading;
           Serial.println("MovingStraight: Line detected");
           runningMode = Mode::FollowingLine;
@@ -388,15 +421,23 @@ void pollIMU() {
 }
 
 void pollLineSensor() {
-  lineDetected = false;
-  for (int i = 0; i < 5; i++) {
-    SensorResult line = forwardLineSensor.getResult();
+  
+  SensorResult lineRight1 = forwardLineRightSensor1.getResult();
+  SensorResult lineLeft1 = forwardLineLeftSensor1.getResult();
+  SensorResult lineRight2 = forwardLineRightSensor2.getResult();
+  SensorResult lineLeft2 = forwardLineLeftSensor2.getResult();
 
-    if (line == SensorResult::Nothing) {
-      lineDetected = true;
-      return;
-    }
+  lineDetected = false;
+  if (lineRight1 == SensorResult::Nothing || lineLeft1 == SensorResult::Nothing || lineRight2 == SensorResult::Nothing || lineRight2 == SensorResult::Nothing) {
+    lineDetected = true;
+    followingLine = true;
   }
+  
+//  if (lineDetected) {
+//    Serial.println("Unhandled line");
+//  } else {
+//    Serial.println("No line");
+//  }
 }
 
 void forward()
