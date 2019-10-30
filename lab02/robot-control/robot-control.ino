@@ -375,6 +375,7 @@ void loop()
           stop();
           Serial.println("FindingLine: Line detected, following.");
           runningMode = Mode::FollowingLine;
+          lineSearchTurns = 0;
           break;
         }
 
