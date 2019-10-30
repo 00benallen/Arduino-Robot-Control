@@ -115,7 +115,7 @@ int currentAligningValue = MAX_ALIGNING_TIME;
 int randomSeedPin = 15;
 
 // Debug
-bool motorsEnabled = true;
+bool motorsEnabled = false;
 
 void setup()
 {
@@ -275,21 +275,47 @@ void loop()
             break;
           }
 
-          bool laserError = false;
-          unsigned long distanceS = 0;
-          for (int i = 0; i < 5; i++) {
-            VL53L0X_RangingMeasurementData_t measure;
-            lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+//          bool laserError = false;
+//          unsigned long distanceS = 0;
+//          for (int i = 0; i < 5; i++) {
+//            VL53L0X_RangingMeasurementData_t measure;
+//            lox.rangingTest(&measure, true); // pass in 'true' to get debug data printout!
+//            
+//            if (measure.RangeStatus != 4) {  // phase failures have incorrect data
+//              distanceS += measure.RangeMilliMeter;
+//            } else {
+//              laserError = true;
+//            }
+//          }
+//
+//          if (distanceS / 5 <= 200 && !laserError) {
+//            Serial.print("Sum of distances was: "); Serial.print(distanceS); Serial.print(" Average distance was: "); Serial.println(distanceS / 3);
+//            if (servoAngle <= 90) {
+//              clearTurnDirection = Direction::Left; // turn the other way
+//              Serial.println("CheckForwardForObjects: Object on right side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+//            } else {
+//              Serial.println("CheckForwardForObjects: Object on left side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
+//              clearTurnDirection = Direction::Right; // turn the other way
+//            }
+//            aligningStartHeading = lastDetectedHeading;
+//            runningMode = Mode::AligningWithClearPath;
+//            randomTurnAmount = random(10, 90);
+//            edgeDetected = true;
+//            ignoreLine = true;
+//            followingLine = false;
+//            break;
+//          }
 
-            if (measure.RangeStatus != 4) {  // phase failures have incorrect data
-              distanceS += measure.RangeMilliMeter;
-            } else {
-              laserError = true;
-            }
-          }
 
-          if (distanceS / 5 <= 200 && !laserError) {
-            Serial.print("Sum of distances was: "); Serial.print(distanceS); Serial.print(" Average distance was: "); Serial.println(distanceS / 3);
+          VL53L0X_RangingMeasurementData_t measure;
+          lox.rangingTest(&measure, true); // pass in 'true' to get debug data printout!
+//          int maxSamples = 0;
+//          while(measure.RangeStatus != 0 && maxSamples < 10) {
+//            lox.rangingTest(&measure, true); // pass in 'true' to get debug data printout!
+//            maxSamples++;
+//          }
+
+          if (measure.RangeStatus == 2 && measure.RangeMilliMeter <= 200) {
             if (servoAngle <= 90) {
               clearTurnDirection = Direction::Left; // turn the other way
               Serial.println("CheckForwardForObjects: Object on right side detected during sweep by IR sensor, reseting servo and initiating emergency backup");
