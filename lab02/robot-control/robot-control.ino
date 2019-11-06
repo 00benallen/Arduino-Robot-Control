@@ -4,8 +4,8 @@ Servo forwardServo;
 int servoPosPin = 10;
 
 /** Servo Constants **/
-unsigned int FOR_CHECK_DELAY_NORMAL = 350;
-unsigned int FOR_CHECK_DELAY_LINE = 500;
+unsigned int FOR_CHECK_DELAY_NORMAL = 750;
+unsigned int FOR_CHECK_DELAY_LINE = 1000;
 const unsigned long SWEEP_DELAY = 40;
 
 /** Motors **/
@@ -28,17 +28,7 @@ const int MIN_ALIGNING_TIME = 200;
 const int EDGE_DET_THRES = 40;
 const unsigned long SENSOR_MAX_TIMEOUT = 2915;
 
-// IR Sensors
 #include "Sensors.h"
-int IRSensorLineLeftOutPin1 = 33;
-int IRSensorLineRightOutPin1 = 53;
-int IRSensorLineLeftOutPin2 = 35;
-int IRSensorLineRightOutPin2 = 30;
-
-IRSensor forwardLineRightSensor1(IRSensorLineLeftOutPin1);
-IRSensor forwardLineLeftSensor1(IRSensorLineRightOutPin1);
-IRSensor forwardLineRightSensor2(IRSensorLineLeftOutPin2);
-IRSensor forwardLineLeftSensor2(IRSensorLineRightOutPin2);
 
 // Ultrasonic Sensor
 #include "Ultrasonic.h"
@@ -55,6 +45,10 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 // IR TOF Sensor
 #include "Adafruit_VL53L0X.h"
 Adafruit_VL53L0X lox = Adafruit_VL53L0X();
+
+// QTR Sensor
+#include <QTRSensors.h>
+QTRSensors qtr;
 
 /** State Machine **/
 #include "StateMachine.h"
@@ -74,7 +68,9 @@ void setup()
 
   initializeTOF();
 
-  intializeIRs();
+  //  intializeIRs();
+
+  initializeQTR();
 
   Serial.println("Initializing auxilliary pins");
   pinMode(randomSeedPin, INPUT);
@@ -119,19 +115,57 @@ void initializeTOF() {
   Serial.println("VL53L0X laser TOF sensor detected");
 }
 
-void intializeIRs() {
-  Serial.println("Initializing IR sensors");
-  forwardLineRightSensor1.init();
-  forwardLineLeftSensor1.init();
-  forwardLineRightSensor2.init();
-  forwardLineLeftSensor2.init();
-}
+//void intializeIRs() {
+//  Serial.println("Initializing IR sensors");
+//  forwardLineRightSensor1.init();
+//  forwardLineLeftSensor1.init();
+//  forwardLineRightSensor2.init();
+//  forwardLineLeftSensor2.init();
+//}
 
 void initializeServo() {
   Serial.println("Initializing forward servo");
   forwardServo.attach(servoPosPin);
   stateMach.servoData.timeOfLastSweep = millis();
   forwardServo.write(90);
+}
+
+void initializeQTR() {
+
+  int sensorCount = 8;
+  Serial.println("Initializing QTC Reflectance Array");
+  qtr.setTypeRC();
+  qtr.setSensorPins((const uint8_t[]) {
+    53, 51, 49, 47, 45, 43, 41, 39
+  }, sensorCount);
+
+  Serial.println("Calibrating... sweep over line please");
+
+  // 2.5 ms RC read timeout (default) * 10 reads per calibrate() call
+  // = ~25 ms per calibrate() call.
+  // Call calibrate() 400 times to make calibration take about 10 seconds.
+  for (uint16_t i = 0; i < 400; i++)
+  {
+    qtr.calibrate();
+  }
+
+  // print the calibration minimum values measured when emitters were on
+  Serial.println("Minimum reflectance values");
+  for (uint8_t i = 0; i < sensorCount; i++)
+  {
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+
+  // print the calibration maximum values measured when emitters were on
+  Serial.println("Maximum reflectance values");
+  for (uint8_t i = 0; i < sensorCount; i++)
+  {
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
 }
 
 void loop()
@@ -164,7 +198,7 @@ void loop()
       { // turn to align the robot with the currently detected clear path
         if (stateMach.moveData.motorsEnabled) {
 
-          if (stateMach.lineData.followingLine && !stateMach.lineData.ignoreLine) { // line detected, and we aren't supposed to ignore it
+          if (stateMach.lineData.followingLine) {
             stateMach.lineDetected();
             break;
           }
@@ -193,12 +227,12 @@ void loop()
       break;
     case State::CheckForwardForObjects:
       {
-        Serial.println("CheckForwardForObjects: Forward sweep starting, stopping robot until path forward is guaranteed clear");
+        Serial.println("[CheckForwardForObjects]: Forward sweep starting, stopping robot until path forward is guaranteed clear");
         stop();
         stateMach.servoData.servoAngle = 0;
         bool edgeDetected = false;
         while (stateMach.servoData.servoAngle <= 180) {
-          forwardServo.write(stateMach.servoData.servoAngle);
+          moveServo();
           stateMach.servoData.servoAngle += 5;
 
           unsigned long distanceCM = forwardEdgeSensor.read(CM);
@@ -210,7 +244,7 @@ void loop()
           }
 
           VL53L0X_RangingMeasurementData_t measure;
-          lox.rangingTest(&measure, true); // pass in 'true' to get debug data printout!
+          lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
 
           if (measure.RangeStatus == 2 && measure.RangeMilliMeter <= 200) {
             stateMach.objectDetected();
@@ -222,7 +256,7 @@ void loop()
         }
 
         stateMach.servoData.servoAngle = 0;
-        forwardServo.write(stateMach.servoData.servoAngle);
+        moveServo();
         stateMach.moveData.timeSinceLastForwardCheck = millis();
 
         if (!edgeDetected && !stateMach.lineData.followingLine) {
@@ -242,6 +276,7 @@ void loop()
         if (stateMach.lineData.lineDetected) {
           Serial.println("FollowingLine: Line detected, following.");
           forward();
+
         } else {
           stateMach.lineLostWhileFollowing();
         }
@@ -249,40 +284,46 @@ void loop()
       break;
     case State::FindingLine:
       {
-
-        if (stateMach.lineData.lineDetected) {
-          stop();
-          stateMach.lineDetected();
-          break;
-        }
-
         float amountTurned = calculateAmountTurned();
 
-        if (amountTurned <= stateMach.lineData.lineTurnAmount) {
-          if (stateMach.lineData.currentTurningDirection == Direction::Left) {
-            Serial.println("FindingLine: Line not detected, looking, turning left");
-            stateMach.lineData.lastLineSearchDirection = Direction::Left;
+        if (amountTurned < 90) {
+          if (stateMach.lineData.linePosition <= 0) {
             turnLeft();
-          } else {
-            Serial.println("FindingLine: Line not detected, looking, turning right");
-            stateMach.lineData.lastLineSearchDirection = Direction::Right;
+          } else if (stateMach.lineData.linePosition >= 7000) {
             turnRight();
+          } else {
+            stateMach.lineDetected();
+            break;
           }
         } else {
-          stateMach.lineData.lineSearchTurns++;
-          if (stateMach.lineData.lineSearchTurns == 1) {
-            Serial.println("FindingLine: Line not detected, looking, switching turn direction");
-            if (stateMach.lineData.currentTurningDirection == Direction::Right) {
-              stateMach.lineData.currentTurningDirection = Direction::Left;
-            } else {
-              stateMach.lineData.currentTurningDirection = Direction::Right;
-            }
-            stateMach.lineData.lineTurnAmount = 90;
-            stateMach.moveData.aligningStartHeading = stateMach.imuData.lastDetectedHeading;
-          } else if (stateMach.lineData.lineSearchTurns == 2) {
-            stateMach.endOfLineDetected();
-          }
+          stateMach.endOfLineDetected();
         }
+
+        //        if (amountTurned <= stateMach.lineData.lineTurnAmount) {
+        //          if (stateMach.lineData.currentTurningDirection == Direction::Left) {
+        //            Serial.println("FindingLine: Line not detected, looking, turning left");
+        //            stateMach.lineData.lastLineSearchDirection = Direction::Left;
+        //            turnLeft();
+        //          } else {
+        //            Serial.println("FindingLine: Line not detected, looking, turning right");
+        //            stateMach.lineData.lastLineSearchDirection = Direction::Right;
+        //            turnRight();
+        //          }
+        //        } else {
+        //          stateMach.lineData.lineSearchTurns++;
+        //          if (stateMach.lineData.lineSearchTurns == 1) {
+        //            Serial.println("FindingLine: Line not detected, looking, switching turn direction");
+        //            if (stateMach.lineData.currentTurningDirection == Direction::Right) {
+        //              stateMach.lineData.currentTurningDirection = Direction::Left;
+        //            } else {
+        //              stateMach.lineData.currentTurningDirection = Direction::Right;
+        //            }
+        //            stateMach.lineData.lineTurnAmount = 90;
+        //            stateMach.moveData.aligningStartHeading = stateMach.imuData.lastDetectedHeading;
+        //          } else if (stateMach.lineData.lineSearchTurns == 2) {
+        //            stateMach.endOfLineDetected();
+        //          }
+        //        }
       }
       break;
     case State::MovingStraight:
@@ -317,20 +358,47 @@ void pollIMU() {
 
 void pollLineSensor() {
 
-  SensorResult lineRight1 = forwardLineRightSensor1.getResult();
-  SensorResult lineLeft1 = forwardLineLeftSensor1.getResult();
-  SensorResult lineRight2 = forwardLineRightSensor2.getResult();
-  SensorResult lineLeft2 = forwardLineLeftSensor2.getResult();
+  // read calibrated sensor values and obtain a measure of the line position
+  // from 0 to 5000 (for a white line, use readLineWhite() instead)
+  int sensorCount = 8;
+  uint16_t sensorValues[sensorCount];
+  uint16_t position = qtr.readLineBlack(sensorValues);
 
+  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
+  // reflectance and 1000 means minimum reflectance, followed by the line
+  // position
   stateMach.lineData.lineDetected = false;
-  if (lineRight1 == SensorResult::Nothing || lineLeft1 == SensorResult::Nothing || lineRight2 == SensorResult::Nothing || lineRight2 == SensorResult::Nothing) {
-    stateMach.lineData.lineDetected = true;
-    stateMach.lineData.followingLine = true;
+  for (uint8_t i = 0; i < sensorCount; i++)
+  {
+    uint16_t curReading = sensorValues[i];
+    Serial.print(curReading);
+    Serial.print('\t');
+    if (curReading > 500) {
+      stateMach.lineData.lineDetected = true;
+      stateMach.lineData.followingLine = true;
+    }
   }
+  Serial.println(position);
+  stateMach.lineData.linePosition = position;
+
+
+  //  if (position >= 6000) {
+  //    turnRight();
+  //  } else if (position <= 0) {
+  //    turnLeft();
+  //  } else {
+  //    forward();
+  //  }
 }
 
 float calculateAmountTurned() {
   return 180 - abs(abs(stateMach.imuData.lastDetectedHeading - stateMach.moveData.aligningStartHeading) - 180);
+}
+
+void moveServo() {
+  if (stateMach.servoData.servoEnabled) {
+    forwardServo.write(stateMach.servoData.servoAngle);
+  }
 }
 
 void forward()

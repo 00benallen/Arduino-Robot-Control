@@ -47,6 +47,7 @@ class LineFollowingData {
     bool ignoreLine = false;
     unsigned int lineTurnAmount = 0;
     unsigned int lineSearchTurns = 0;
+    unsigned int linePosition = 0;
 };
 
 class MovementData {
@@ -56,7 +57,7 @@ class MovementData {
     int backupTimeElapsed = 0;
     float aligningStartHeading = 0;
     int currentAligningValue = 0;
-    bool motorsEnabled = false;
+    bool motorsEnabled = true;
     int randomTurnAmount = 90;
 };
 
@@ -64,6 +65,7 @@ class ServoData {
   public:
     unsigned long timeOfLastSweep = 0;
     unsigned int servoAngle = 0;
+    bool servoEnabled = true;
 };
 
 class StateMachine
