@@ -88,6 +88,26 @@ void StateMachine::endOfLineDetected() {
   this->lineData.lineSearchTurns = 0;
 }
 
+void StateMachine::lightDetected() {
+  this->printStateTransition("Light detected");
+  Serial.println(this->lightData.lightAngle);
+  if (this->lightData.lightAngle > 90) {
+    this->lightData.turnDirection = Direction::Left; // turn the other way
+  } else {
+    this->lightData.turnDirection = Direction::Right; // turn the other way
+  }
+  this->currentState = State::FollowingLight;
+  this->servoData.servoAngle = 90;
+  this->lineData.ignoreLine = true;
+  this->saveAligningStartHeading();
+}
+
+void StateMachine::lightLost() {
+  this->printStateTransition("Sweep complete, path forward clear, continuing forward");
+  this->currentState = State::CheckForwardForObjects; 
+  this->lineData.ignoreLine = false;
+}
+
 void StateMachine::saveAligningStartHeading() {
   this->moveData.aligningStartHeading = this->imuData.lastDetectedHeading;
 }

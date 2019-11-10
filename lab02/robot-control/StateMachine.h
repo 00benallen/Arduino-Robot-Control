@@ -50,6 +50,14 @@ class LineFollowingData {
     unsigned int linePosition = 0;
 };
 
+class LightFollowingData {
+  public:
+    float lightReading = 0;
+    float lightForwardReading = 0;
+    Direction turnDirection = Direction::Left;
+    float lightAngle = 0;
+};
+
 class MovementData {
   public:
     unsigned long timeSinceLastForwardCheck = 0;
@@ -77,6 +85,7 @@ class StateMachine
     State currentState;
     IMUData imuData;
     LineFollowingData lineData;
+    LightFollowingData lightData;
     MovementData moveData;
     ServoData servoData;
 
@@ -86,11 +95,12 @@ class StateMachine
     void aligningWithClearPathComplete();
     void edgeDetected();
     void objectDetected();
-    void lightDetected();
     void checkForwardForObjectsClear();
     void forwardCheckTimeout();
     void lineLostWhileFollowing();
     void endOfLineDetected();
+    void lightDetected();
+    void lightLost();
 
   private:
     void saveAligningStartHeading();

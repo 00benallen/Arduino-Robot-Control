@@ -4,7 +4,7 @@ Servo forwardServo;
 int servoPosPin = 10;
 
 /** Servo Constants **/
-unsigned int FOR_CHECK_DELAY_NORMAL = 750;
+unsigned int FOR_CHECK_DELAY_NORMAL = 500;
 unsigned int FOR_CHECK_DELAY_LINE = 1000;
 const unsigned long SWEEP_DELAY = 40;
 
@@ -50,6 +50,9 @@ Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 #include <QTRSensors.h>
 QTRSensors qtr;
 
+// Photoresistor Sensor
+int photoPin = A8;
+
 /** State Machine **/
 #include "StateMachine.h"
 StateMachine stateMach(State::FollowingLine);
@@ -75,6 +78,8 @@ void setup()
   Serial.println("Initializing auxilliary pins");
   pinMode(randomSeedPin, INPUT);
   randomSeed(analogRead(randomSeedPin));
+
+  pinMode(photoPin, INPUT);
 
   initializeServo();
 
@@ -176,6 +181,7 @@ void loop()
   if (!stateMach.lineData.ignoreLine) {
     pollLineSensor();
   }
+  pollPhotoresistor();
 
   // Main switch case for determining what behaviour the robot should be doing, based on the current state
   switch (stateMach.currentState)
@@ -231,12 +237,21 @@ void loop()
         stop();
         stateMach.servoData.servoAngle = 0;
         bool edgeDetected = false;
+        bool lightDetected = false;
         while (stateMach.servoData.servoAngle <= 180) {
           moveServo();
           stateMach.servoData.servoAngle += 5;
 
-          unsigned long distanceCM = forwardEdgeSensor.read(CM);
+          pollPhotoresistor();
+          if (stateMach.lightData.lightReading <= 515) {
+            lightDetected = true;
+            if (stateMach.lightData.lightReading < stateMach.lightData.lightForwardReading || stateMach.lightData.lightForwardReading == 0) {
+              stateMach.lightData.lightForwardReading = stateMach.lightData.lightReading;
+              stateMach.lightData.lightAngle = stateMach.servoData.servoAngle;
+            }
+          }
 
+          unsigned long distanceCM = forwardEdgeSensor.read(CM);
           if (distanceCM > EDGE_DET_THRES) {
             stateMach.edgeDetected();
             edgeDetected = true;
@@ -245,25 +260,29 @@ void loop()
 
           VL53L0X_RangingMeasurementData_t measure;
           lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
-
           if (measure.RangeStatus == 2 && measure.RangeMilliMeter <= 200) {
             stateMach.objectDetected();
             edgeDetected = true;
-            break;
           }
 
           delay(SWEEP_DELAY);
         }
 
+        if (!edgeDetected && !stateMach.lineData.followingLine && !lightDetected) {
+          stateMach.checkForwardForObjectsClear();
+        } else if (stateMach.lineData.followingLine && !stateMach.lineData.ignoreLine && !lightDetected) {
+          stateMach.lineDetected();
+        } else if (lightDetected) {
+          stateMach.lightDetected();
+          moveServo();
+          delay(500);
+          stateMach.moveData.timeSinceLastForwardCheck = millis();
+          break;
+        }
+
         stateMach.servoData.servoAngle = 0;
         moveServo();
         stateMach.moveData.timeSinceLastForwardCheck = millis();
-
-        if (!edgeDetected && !stateMach.lineData.followingLine) {
-          stateMach.checkForwardForObjectsClear();
-        } else if (stateMach.lineData.followingLine && !stateMach.lineData.ignoreLine) {
-          stateMach.lineDetected();
-        }
       }
       break;
     case State::FollowingLine: {
@@ -298,32 +317,39 @@ void loop()
         } else {
           stateMach.endOfLineDetected();
         }
-
-        //        if (amountTurned <= stateMach.lineData.lineTurnAmount) {
-        //          if (stateMach.lineData.currentTurningDirection == Direction::Left) {
-        //            Serial.println("FindingLine: Line not detected, looking, turning left");
-        //            stateMach.lineData.lastLineSearchDirection = Direction::Left;
-        //            turnLeft();
-        //          } else {
-        //            Serial.println("FindingLine: Line not detected, looking, turning right");
-        //            stateMach.lineData.lastLineSearchDirection = Direction::Right;
-        //            turnRight();
-        //          }
-        //        } else {
-        //          stateMach.lineData.lineSearchTurns++;
-        //          if (stateMach.lineData.lineSearchTurns == 1) {
-        //            Serial.println("FindingLine: Line not detected, looking, switching turn direction");
-        //            if (stateMach.lineData.currentTurningDirection == Direction::Right) {
-        //              stateMach.lineData.currentTurningDirection = Direction::Left;
-        //            } else {
-        //              stateMach.lineData.currentTurningDirection = Direction::Right;
-        //            }
-        //            stateMach.lineData.lineTurnAmount = 90;
-        //            stateMach.moveData.aligningStartHeading = stateMach.imuData.lastDetectedHeading;
-        //          } else if (stateMach.lineData.lineSearchTurns == 2) {
-        //            stateMach.endOfLineDetected();
-        //          }
-        //        }
+      }
+      break;
+    case State::FollowingLight:
+      {
+        
+        if (abs(stateMach.lightData.lightReading - stateMach.lightData.lightForwardReading) < 2 || stateMach.lightData.lightReading < stateMach.lightData.lightForwardReading) {
+          if (stateMach.lightData.lightReading < 475) {
+            Serial.println("Light too close");
+            stop();
+          } else {
+            Serial.println("Light lined up and not too close, light may be extinguished");
+            Serial.println(stateMach.lightData.lightReading);
+            Serial.println(stateMach.lightData.lightForwardReading);
+            stateMach.lightData.lightForwardReading = 0;
+            stateMach.checkForwardForObjectsClear();
+          }
+        } else {
+          float amountTurned = calculateAmountTurned();
+          if (amountTurned < 90) {
+  
+            if (stateMach.lightData.turnDirection == Direction::Left) {
+              Serial.println("Turning left to light");
+              turnLeft();
+            } else {
+              Serial.println("Turning right to light");
+              turnRight();
+            }
+          } else {
+            Serial.println("Light lost, giving up");
+            stateMach.lightData.lightForwardReading = 0;
+            stateMach.lightLost();
+          }
+        }
       }
       break;
     case State::MovingStraight:
@@ -371,24 +397,17 @@ void pollLineSensor() {
   for (uint8_t i = 0; i < sensorCount; i++)
   {
     uint16_t curReading = sensorValues[i];
-    Serial.print(curReading);
-    Serial.print('\t');
     if (curReading > 500) {
       stateMach.lineData.lineDetected = true;
       stateMach.lineData.followingLine = true;
     }
   }
-  Serial.println(position);
   stateMach.lineData.linePosition = position;
+}
 
-
-  //  if (position >= 6000) {
-  //    turnRight();
-  //  } else if (position <= 0) {
-  //    turnLeft();
-  //  } else {
-  //    forward();
-  //  }
+void pollPhotoresistor() {
+  stateMach.lightData.lightReading = analogRead(photoPin);
+  Serial.print("Light Resistance: "); Serial.println(stateMach.lightData.lightReading);
 }
 
 float calculateAmountTurned() {
