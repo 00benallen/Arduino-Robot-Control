@@ -4,8 +4,6 @@ Servo forwardServo;
 int servoPosPin = 10;
 
 /** Servo Constants **/
-unsigned int FOR_CHECK_DELAY_NORMAL = 500;
-unsigned int FOR_CHECK_DELAY_LINE = 1000;
 const unsigned long SWEEP_DELAY = 40;
 
 /** Motors **/
@@ -211,7 +209,7 @@ void loop()
 
 
           float amountTurned = calculateAmountTurned();
-          if (amountTurned <= 90)
+          if (amountTurned <= stateMach.moveData.randomTurnAmount)
           {
             if (stateMach.moveData.clearTurnDirection == Direction::Right)
             {
@@ -263,21 +261,22 @@ void loop()
           if (measure.RangeStatus == 2 && measure.RangeMilliMeter <= 200) {
             stateMach.objectDetected();
             edgeDetected = true;
+            break;
           }
 
           delay(SWEEP_DELAY);
         }
 
-        if (!edgeDetected && !stateMach.lineData.followingLine && !lightDetected) {
-          stateMach.checkForwardForObjectsClear();
-        } else if (stateMach.lineData.followingLine && !stateMach.lineData.ignoreLine && !lightDetected) {
+        if (stateMach.lineData.followingLine && !stateMach.lineData.ignoreLine && !lightDetected) {
           stateMach.lineDetected();
-        } else if (lightDetected) {
+        } else if (lightDetected && !edgeDetected) {
           stateMach.lightDetected();
           moveServo();
           delay(500);
           stateMach.moveData.timeSinceLastForwardCheck = millis();
           break;
+        } else if (!edgeDetected) {
+          stateMach.checkForwardForObjectsClear();
         }
 
         stateMach.servoData.servoAngle = 0;
@@ -287,7 +286,7 @@ void loop()
       break;
     case State::FollowingLine: {
 
-        if (millis() - stateMach.moveData.timeSinceLastForwardCheck > FOR_CHECK_DELAY_LINE) {
+        if (millis() - stateMach.moveData.timeSinceLastForwardCheck > stateMach.moveData.forwardCheckDelay) {
           stateMach.forwardCheckTimeout();
           break;
         }
@@ -321,21 +320,32 @@ void loop()
       break;
     case State::FollowingLight:
       {
+        if (stateMach.lightData.lightReading > 530) {
+          Serial.println("Light extinguished");
+          stateMach.lightData.found = false;
+        }
         
-        if (abs(stateMach.lightData.lightReading - stateMach.lightData.lightForwardReading) < 2 || stateMach.lightData.lightReading < stateMach.lightData.lightForwardReading) {
-          if (stateMach.lightData.lightReading < 475) {
-            Serial.println("Light too close");
-            stop();
-          } else {
-            Serial.println("Light lined up and not too close, light may be extinguished");
-            Serial.println(stateMach.lightData.lightReading);
-            Serial.println(stateMach.lightData.lightForwardReading);
+        if (stateMach.lightData.lightReading < 500 || stateMach.lightData.found) {
+          Serial.println("Light too close");
+          stateMach.lightData.found = true;
+          stop();
+          break;
+        }
+        
+        if (abs(stateMach.lightData.lightReading - stateMach.lightData.lightForwardReading) < 10 || stateMach.lightData.lightReading < stateMach.lightData.lightForwardReading) {
+          Serial.println("Light lined up and not too close, light may be extinguished");
+          Serial.println(stateMach.lightData.lightReading);
+          Serial.println(stateMach.lightData.lightForwardReading);
+          stateMach.lightData.lightForwardReading = 0;
+          stateMach.checkForwardForObjectsClear();
+        } else {
+          float amountTurned = calculateAmountTurned();
+          if (stateMach.lightData.linedUp) {
+            Serial.println("Light within deadzone");
             stateMach.lightData.lightForwardReading = 0;
             stateMach.checkForwardForObjectsClear();
           }
-        } else {
-          float amountTurned = calculateAmountTurned();
-          if (amountTurned < 90) {
+          else if (amountTurned < 90) {
   
             if (stateMach.lightData.turnDirection == Direction::Left) {
               Serial.println("Turning left to light");
@@ -356,7 +366,7 @@ void loop()
       { // way forward is clear, so go that way
         forward();
 
-        if (millis() - stateMach.moveData.timeSinceLastForwardCheck > FOR_CHECK_DELAY_NORMAL) {
+        if (millis() - stateMach.moveData.timeSinceLastForwardCheck > stateMach.moveData.forwardCheckDelay) {
           stateMach.forwardCheckTimeout();
         }
 

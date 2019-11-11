@@ -1,7 +1,12 @@
 #include "StateMachine.h"
 
+unsigned int FOR_CHECK_DELAY_NORMAL = 300;
+unsigned int FOR_CHECK_DELAY_LINE = 1000;
+unsigned int FOR_CHECK_DELAY_LIGHT = 100;
+
 StateMachine::StateMachine(State initialState) {
   this->currentState = initialState;
+  this->moveData.forwardCheckDelay = FOR_CHECK_DELAY_NORMAL;
 }
 
 void StateMachine::emergencyBackupComplete() {
@@ -27,12 +32,15 @@ void StateMachine::lineDetected() {
   this->saveAligningStartHeading();
   this->lineData.lineSearchTurns = 0;
   this->currentState = State::FollowingLine;
+  this->moveData.forwardCheckDelay = FOR_CHECK_DELAY_LINE;
 }
 
 void StateMachine::aligningWithClearPathComplete() {
+  this->moveData.randomTurnAmount = random(10, 170);
   this->printStateTransition("Clear path alignment finished, starting to find a forward path");
   this->currentState = State::CheckForwardForObjects;
   this->lineData.ignoreLine = false;
+  this->moveData.forwardCheckDelay = FOR_CHECK_DELAY_NORMAL;
 }
 
 void StateMachine::edgeDetected() {
@@ -91,15 +99,21 @@ void StateMachine::endOfLineDetected() {
 void StateMachine::lightDetected() {
   this->printStateTransition("Light detected");
   Serial.println(this->lightData.lightAngle);
-  if (this->lightData.lightAngle > 90) {
+  if (this->lightData.lightAngle >= 80 && this->lightData.lightAngle <= 100) {
+    this->lightData.linedUp = true;
+  }
+  else if (this->lightData.lightAngle > 90) {
     this->lightData.turnDirection = Direction::Left; // turn the other way
+    this->lightData.linedUp = false;
   } else {
     this->lightData.turnDirection = Direction::Right; // turn the other way
+    this->lightData.linedUp = false;
   }
   this->currentState = State::FollowingLight;
   this->servoData.servoAngle = 90;
   this->lineData.ignoreLine = true;
   this->saveAligningStartHeading();
+  this->moveData.forwardCheckDelay = FOR_CHECK_DELAY_LIGHT;
 }
 
 void StateMachine::lightLost() {

@@ -56,6 +56,8 @@ class LightFollowingData {
     float lightForwardReading = 0;
     Direction turnDirection = Direction::Left;
     float lightAngle = 0;
+    bool linedUp = false;
+    bool found = false;
 };
 
 class MovementData {
@@ -67,6 +69,7 @@ class MovementData {
     int currentAligningValue = 0;
     bool motorsEnabled = true;
     int randomTurnAmount = 90;
+    unsigned long forwardCheckDelay = 0;
 };
 
 class ServoData {
