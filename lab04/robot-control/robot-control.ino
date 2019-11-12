@@ -233,10 +233,10 @@ void loop()
       {
         Serial.println("[CheckForwardForObjects]: Forward sweep starting, stopping robot until path forward is guaranteed clear");
         stop();
-        stateMach.servoData.servoAngle = 0;
+        stateMach.servoData.servoAngle = 45;
         bool edgeDetected = false;
         bool lightDetected = false;
-        while (stateMach.servoData.servoAngle <= 180) {
+        while (stateMach.servoData.servoAngle <= 135) {
           moveServo();
           stateMach.servoData.servoAngle += 5;
 
@@ -258,7 +258,7 @@ void loop()
 
           VL53L0X_RangingMeasurementData_t measure;
           lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
-          if (measure.RangeStatus == 2 && measure.RangeMilliMeter <= 200) {
+          if (measure.RangeStatus == 2 && measure.RangeMilliMeter <= 170) {
             stateMach.objectDetected();
             edgeDetected = true;
             break;
@@ -279,7 +279,7 @@ void loop()
           stateMach.checkForwardForObjectsClear();
         }
 
-        stateMach.servoData.servoAngle = 0;
+        stateMach.servoData.servoAngle = 45;
         moveServo();
         stateMach.moveData.timeSinceLastForwardCheck = millis();
       }

@@ -67,7 +67,7 @@ class MovementData {
     int backupTimeElapsed = 0;
     float aligningStartHeading = 0;
     int currentAligningValue = 0;
-    bool motorsEnabled = true;
+    bool motorsEnabled = false;
     int randomTurnAmount = 90;
     unsigned long forwardCheckDelay = 0;
 };
@@ -76,7 +76,7 @@ class ServoData {
   public:
     unsigned long timeOfLastSweep = 0;
     unsigned int servoAngle = 0;
-    bool servoEnabled = true;
+    bool servoEnabled = false;
 };
 
 class StateMachine
