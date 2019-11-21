@@ -24,10 +24,12 @@ class Navigator {
     Navigator(bool debug);
     void setLastIntersection(Intersection last);
     TurnDirection getNextTurn();
+    void setLastTurn(TurnDirection lastTurn);
 
   private:
     bool debug;
     Intersection lastDetectedIntersection;
+    TurnDirection lastTurn;
     void printDebugMessage(String message);
   
 };

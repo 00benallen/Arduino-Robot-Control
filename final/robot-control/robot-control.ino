@@ -146,8 +146,16 @@ void initializeQTR() {
   // 2.5 ms RC read timeout (default) * 10 reads per calibrate() call
   // = ~25 ms per calibrate() call.
   // Call calibrate() 400 times to make calibration take about 10 seconds.
-  for (uint16_t i = 0; i < 400; i++)
+  for (uint16_t i = 0; i < 100; i++)
   {
+    if (i <= 25) {
+      turnLeft();
+    } else if (i <= 75) {
+      turnRight();
+    } else {
+      turnLeft();
+    }
+    
     qtr.calibrate();
   }
 
@@ -384,11 +392,12 @@ void loop()
   //  }
 
   long loopStart = millis(); // useful for timing of various processes in run loop
+  pollIMU();
   pollLineSensors();
 
   if (stateMach.lineData.identifyingIntersection) {
     forward();
-    unsigned long timeElapsedIdentIntersection = millis() - stateMach.lineData.timeStartIdentIntersection;
+//    unsigned long timeElapsedIdentIntersection = millis() - stateMach.lineData.timeStartIdentIntersection;
     Serial.print("Forward: "); Serial.println(stateMach.lineData.foundLineForward);
     Serial.print("Left: "); Serial.println(stateMach.lineData.foundLineLeft);
     Serial.print("Right: "); Serial.println(stateMach.lineData.foundLineRight);
@@ -407,20 +416,20 @@ void loop()
 
       }
 
-      if (timeElapsedIdentIntersection > 1500) {
-        Serial.println("Identification timeout");
-
-        if (stateMach.lineData.foundLineRight && stateMach.lineData.foundLineLeft) {
-          nav.setLastIntersection(Intersection::FourWay); // Shouldn't happen
-        }
-
-        // Cleanup
-        stateMach.lineData.identifyingIntersection = false;
-        stateMach.lineData.foundLineForward = false;
-        stateMach.lineData.foundLineLeft = false;
-        stateMach.lineData.foundLineRight = false;
-
-      }
+//      if (timeElapsedIdentIntersection > 1500) {
+//        Serial.println("Identification timeout");
+//
+//        if (stateMach.lineData.foundLineRight && stateMach.lineData.foundLineLeft) {
+//          nav.setLastIntersection(Intersection::FourWay); // Shouldn't happen
+//        }
+//
+//        // Cleanup
+//        stateMach.lineData.identifyingIntersection = false;
+//        stateMach.lineData.foundLineForward = false;
+//        stateMach.lineData.foundLineLeft = false;
+//        stateMach.lineData.foundLineRight = false;
+//
+//      }
 
     } else {
       if (stateMach.lineData.foundLineRight) {
@@ -433,20 +442,20 @@ void loop()
 
       }
 
-      if (timeElapsedIdentIntersection > 1500) {
-        Serial.println("Identification timeout");
-
-        if (stateMach.lineData.foundLineRight && stateMach.lineData.foundLineLeft) {
-          nav.setLastIntersection(Intersection::ThreeWayTee); // Shouldn't happen
-        }
-
-        // Cleanup
-        stateMach.lineData.identifyingIntersection = false;
-        stateMach.lineData.foundLineForward = false;
-        stateMach.lineData.foundLineLeft = false;
-        stateMach.lineData.foundLineRight = false;
-
-      }
+//      if (timeElapsedIdentIntersection > 1500) {
+//        Serial.println("Identification timeout");
+//
+//        if (stateMach.lineData.foundLineRight && stateMach.lineData.foundLineLeft) {
+//          nav.setLastIntersection(Intersection::ThreeWayTee); // Shouldn't happen
+//        }
+//
+//        // Cleanup
+//        stateMach.lineData.identifyingIntersection = false;
+//        stateMach.lineData.foundLineForward = false;
+//        stateMach.lineData.foundLineLeft = false;
+//        stateMach.lineData.foundLineRight = false;
+//
+//      }
     }
 
   } else {
@@ -454,20 +463,53 @@ void loop()
     if (!stateMach.lineData.intersectionHandled) {
       TurnDirection newTurn = nav.getNextTurn();
 
-      if (newTurn == TurnDirection::Left) {
-        turnLeft();
-      } else if (newTurn == TurnDirection::Right) {
-        turnRight();
+      if (newTurn != TurnDirection::None) {
+        float amountTurned = calculateAmountTurned();
+        Serial.println("Cur amount turned: "); Serial.print(amountTurned);
+        if (newTurn == TurnDirection::Left) {
+          Serial.println("Turning left");
+          turnLeft();
+        } else if (newTurn == TurnDirection::Right) {
+          Serial.println("Turning right");
+          turnRight();
+        }
+
+        if (amountTurned >= 30) {
+           stateMach.lineData.doneIntersectionFirstTurnStep = true;
+        }
+
+        if (stateMach.lineData.doneIntersectionFirstTurnStep) {
+          Serial.println("30 degrees done, continuing turn");
+          if (stateMach.lineData.lineDetected) {
+            stop();
+            Serial.println("Line found, ending turn");
+            stateMach.lineData.doneIntersectionFirstTurnStep = false;
+            stateMach.lineData.intersectionHandled = true;
+            nav.setLastTurn(newTurn);
+          }
+        }
       } else {
-        forward();
-      }
-
-      if (stateMach.lineData.lineDetected) {
-        forward();
+        Serial.println("No turn recommended, continuing straight");
+        stop();
         stateMach.lineData.intersectionHandled = true;
+        nav.setLastTurn(newTurn);
       }
-    } else {
 
+//      if (newTurn == TurnDirection::Left) {
+//        turnLeft();
+//      } else if (newTurn == TurnDirection::Right) {
+//        turnRight();
+//      } else {
+//        forward();
+//      }
+//
+//      if (stateMach.lineData.lineDetected) {
+//        forward();
+//        stateMach.lineData.intersectionHandled = true;
+//        nav.setLastTurn(newTurn);
+//      }
+    } else {
+      Serial.println("Following line normally");
       if (stateMach.lineData.linePosition < 2000) {
         Serial.println("Turning Right");
         turnRight();
@@ -505,7 +547,7 @@ void pollLineSensors() {
   {
     unsigned int curReading = sensorValues[i];
     Serial.print(curReading); Serial.print(" ");
-    if (curReading > 800) {
+    if (curReading > 700) {
       stateMach.lineData.lineDetected = true;
       stateMach.lineData.followingLine = true;
 
@@ -530,12 +572,37 @@ void pollLineSensors() {
 
   stateMach.lineData.linePosition = position;
 
+  bool leftEnded = false;
   if (digitalRead(leftLineAuxPin) == HIGH) {
+//    Serial.println("FOUND LINE LEFT =========================================");
     stateMach.lineData.foundLineLeft = true;
+  } else {
+    leftEnded = stateMach.lineData.foundLineLeft;
+  }
+  
+  bool rightEnded = false;
+  if (digitalRead(rightLineAuxPin) == HIGH) {
+//    Serial.println("Found line right");
+    stateMach.lineData.foundLineRight = true;
+  } else {
+    rightEnded = stateMach.lineData.foundLineRight;
   }
 
-  if (digitalRead(rightLineAuxPin) == HIGH) {
-    stateMach.lineData.foundLineRight = true;
+  if (leftEnded && rightEnded) {
+    stateMach.saveAligningStartHeading();
+    stateMach.lineData.identifyingIntersection = false;
+    stateMach.lineData.foundLineForward = false;
+    stateMach.lineData.foundLineLeft = false;
+    stateMach.lineData.foundLineRight = false;
+  }
+
+  // assumption: we're hitting intersections reasonably straight, if not foundLine* could be true in future
+  if ((leftEnded && !stateMach.lineData.foundLineRight) || (rightEnded && !stateMach.lineData.foundLineLeft)) {
+    stateMach.saveAligningStartHeading();
+    stateMach.lineData.identifyingIntersection = false;
+    stateMach.lineData.foundLineForward = false;
+    stateMach.lineData.foundLineLeft = false;
+    stateMach.lineData.foundLineRight = false;
   }
 
 }

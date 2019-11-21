@@ -21,12 +21,36 @@ TurnDirection Navigator::getNextTurn() {
     case Intersection::LeftCorner: {
       
       recommendation = TurnDirection::Left;
+      
     } 
     break;
     case Intersection::RightCorner: {
       
       recommendation = TurnDirection::Right;
-    } 
+      
+    }
+    break;
+    case Intersection::ThreeWayRight: {
+
+      recommendation = TurnDirection::Right;
+      
+    }
+    break;
+    case Intersection::ThreeWayLeft: {
+
+      recommendation = TurnDirection::Left;
+      
+    }
+    break;
+    case Intersection::ThreeWayTee: {
+
+      if (lastTurn == TurnDirection::Left) {
+        recommendation = TurnDirection::Right;
+      } else {
+        recommendation = TurnDirection::Left;
+      }
+      
+    }
     break;
   }
   this->printDebugMessage("New turn recommendation: ");
@@ -38,6 +62,10 @@ void Navigator::printDebugMessage(String message) {
   if (this->debug) {
     Serial.print("[Navigator]: "); Serial.println(message);
   }
+}
+
+void Navigator::setLastTurn(TurnDirection d) {
+  this->lastTurn = d;
 }
 
 String turnToString(TurnDirection d) {

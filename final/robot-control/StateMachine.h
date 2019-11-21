@@ -67,6 +67,7 @@ class LineFollowingData {
     bool foundLineLeft = false;
     bool foundLineRight = false;
     bool foundLineForward = false;
+    bool doneIntersectionFirstTurnStep = false;
 };
 
 class LightFollowingData {
@@ -123,9 +124,10 @@ class StateMachine
     void endOfLineDetected();
     void lightDetected();
     void lightLost();
+    void saveAligningStartHeading();
 
   private:
-    void saveAligningStartHeading();
+    
     void printStateTransition(String message);
     String getCurrentStateLabel();
 };
