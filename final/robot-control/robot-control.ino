@@ -1,9 +1,6 @@
 /** Motors **/
-#include <AFMotor.h>
-AF_DCMotor motorFrontRight(3);
-AF_DCMotor motorBackRight(2);
-AF_DCMotor motorFrontLeft(4);
-AF_DCMotor motorBackLeft(1);
+#include "Atm_motors.h"
+Atm_motors motors(3, 4, 2, 1);
 
 /** Motor Constants **/
 const int MOTOR_SPEED_LOW = 120;
@@ -12,10 +9,12 @@ const int MOTOR_SPEED_HIGH = 255;
 /** Sensors **/
 
 // 9-Axis IMU
-#include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BNO055.h>
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+//#include <Wire.h>
+//#include <Adafruit_Sensor.h>
+//#include <Adafruit_BNO055.h>
+//Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+#include "Atm_imu.h"
+Atm_imu IMU;
 
 // IR TOF Sensor
 //#include "Adafruit_VL53L0X.h"
@@ -67,24 +66,18 @@ void setup()
 
 void initializeMotors() {
   Serial.println("Initializing motors");
-  motorFrontRight.setSpeed(MOTOR_SPEED_LOW);
-  motorFrontRight.run(RELEASE);
-  motorBackRight.setSpeed(MOTOR_SPEED_LOW);
-  motorBackRight.run(RELEASE);
-  motorFrontLeft.setSpeed(MOTOR_SPEED_LOW);
-  motorFrontLeft.run(RELEASE);
-  motorBackLeft.setSpeed(MOTOR_SPEED_LOW);
-  motorBackLeft.run(RELEASE);
+  motors.begin(MOTOR_SPEED_LOW).trace( Serial );
 }
 
 void initializeIMU() {
   Serial.println("Initializing BNO055 9-axis IMU");
-  while (!bno.begin())
-  {
-    Serial.println("No BNO055 detected");
-    delay(1000);
-  }
-  Serial.println("BNO055 9-axis IMU detected and initialized");
+  //  while (!bno.begin())
+  //  {
+  //    Serial.println("No BNO055 detected");
+  //    delay(1000);
+  //  }
+  //  Serial.println("BNO055 9-axis IMU detected and initialized");
+  IMU.begin().trace( Serial );
 }
 
 void initializeAuxIRs() {
@@ -127,11 +120,11 @@ void initializeQTR() {
   for (uint16_t i = 0; i < 100; i++)
   {
     if (i <= 25) {
-      turnLeft();
+      motors.left();
     } else if (i <= 75) {
-      turnRight();
+      motors.right();
     } else {
-      turnLeft();
+      motors.left();
     }
 
     qtr.calibrate();
@@ -158,27 +151,27 @@ void initializeQTR() {
 
 void loop()
 {
+  automaton.run();
 
   long loopStart = millis(); // useful for timing of various processes in run loop
-  pollIMU();
   pollLineSensors();
   pollFlameSensors();
 
   if (stateMach.flameData.leftFlameDet || stateMach.flameData.rightFlameDet || stateMach.flameData.forwardFlameDet || stateMach.flameData.aligningWithFlame) {
 
     if (!stateMach.flameData.aligningWithFlame) {
-      stop();
+      motors.stop();
       Serial.println("Fire detected, stop");
       delay(500);
     } else {
       if (stateMach.flameData.leftFlameDet) {
-        turnLeft();
+        motors.left();
       } else if (stateMach.flameData.rightFlameDet) {
-        turnRight();
+        motors.right();
       }
 
       if (stateMach.flameData.forwardFlameDet) {
-        stop();
+        motors.stop();
         delay(500);
         stateMach.flameData.aligningWithFlame = false;
         return;
@@ -281,27 +274,29 @@ void loop()
       TurnDirection newTurn = nav.getNextTurn();
 
       if (newTurn != TurnDirection::None) {
-        float amountTurned = calculateAmountTurned();
-        Serial.println("Cur amount turned: "); Serial.print(amountTurned);
+        if (IMU.turnComplete) { // TODO replace with better inter-automata comms later
+          IMU.track_turn(45);
+        } 
+        
         if (newTurn == TurnDirection::Left) {
           Serial.println("Turning left");
-          turnLeft();
+          motors.left();
         } else if (newTurn == TurnDirection::Right) {
           Serial.println("Turning right");
-          turnRight();
+          motors.right();
         }
 
-        if (amountTurned >= 45 && !stateMach.lineData.doneIntersectionFirstTurnStep) {
+        if (IMU.turnComplete && !stateMach.lineData.doneIntersectionFirstTurnStep) {
           stateMach.lineData.doneIntersectionFirstTurnStep = true;
-          forward();
+          motors.forward();
           delay(400);
         }
 
         if (stateMach.lineData.doneIntersectionFirstTurnStep) {
-          Serial.println("30 degrees done, continuing turn");
+          Serial.println("45 degrees done, continuing turn");
 
-          if ((int)(amountTurned) % 1 == 0) {
-            stop();
+          if ((int)(IMU.angleAbsDiff()) % 1 == 0) {
+            motors.stop();
             delayMicroseconds(3);
           }
 
@@ -314,7 +309,7 @@ void loop()
         }
       } else {
         Serial.println("No turn recommended, continuing straight");
-        stop();
+        motors.stop();
         stateMach.lineData.intersectionHandled = true;
         nav.setLastTurn(newTurn);
       }
@@ -322,26 +317,19 @@ void loop()
       Serial.println("Following line normally");
       if (stateMach.lineData.linePosition < 1000) {
         Serial.println("Turning Right");
-        turnRight();
+        motors.right();
       } else if (stateMach.lineData.linePosition > 6000) {
         Serial.println("Turning Left");
-        turnLeft();
+        motors.left();
       } else {
         stateMach.lineData.pulledAwayFromIntersection = true;
-        forward();
+        motors.forward();
       }
     } else {
-      forward();
+      motors.forward();
     }
 
   }
-}
-
-void pollIMU() {
-  unsigned long tStart = micros();
-  sensors_event_t orientationData;
-  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-  stateMach.imuData.lastDetectedHeading = orientationData.orientation.x;
 }
 
 void pollLineSensors() {
@@ -418,54 +406,4 @@ void pollFlameSensors() {
 
 float calculateAmountTurned() {
   return 180 - abs(abs(stateMach.imuData.lastDetectedHeading - stateMach.moveData.aligningStartHeading) - 180);
-}
-
-void forward()
-{
-  if (stateMach.moveData.motorsEnabled) {
-    motorFrontRight.run(FORWARD);
-    motorBackRight.run(FORWARD);
-    motorFrontLeft.run(FORWARD);
-    motorBackLeft.run(FORWARD);
-  }
-}
-
-void backward()
-{
-  if (stateMach.moveData.motorsEnabled) {
-    motorFrontRight.run(BACKWARD);
-    motorBackRight.run(BACKWARD);
-    motorFrontLeft.run(BACKWARD);
-    motorBackLeft.run(BACKWARD);
-  }
-}
-
-void turnRight()
-{
-  if (stateMach.moveData.motorsEnabled) {
-    motorFrontRight.run(BACKWARD);
-    motorBackRight.run(BACKWARD);
-    motorFrontLeft.run(FORWARD);
-    motorBackLeft.run(FORWARD);
-  }
-}
-
-void turnLeft()
-{
-  if (stateMach.moveData.motorsEnabled) {
-    motorFrontRight.run(FORWARD);
-    motorBackRight.run(FORWARD);
-    motorFrontLeft.run(BACKWARD);
-    motorBackLeft.run(BACKWARD);
-  }
-}
-
-void stop()
-{
-  if (stateMach.moveData.motorsEnabled) {
-    motorFrontRight.run(RELEASE);
-    motorBackRight.run(RELEASE);
-    motorFrontLeft.run(RELEASE);
-    motorBackLeft.run(RELEASE);
-  }
 }
