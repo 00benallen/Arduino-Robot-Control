@@ -52,6 +52,16 @@ TurnDirection Navigator::getNextTurn() {
       
     }
     break;
+    case Intersection::FourWay: {
+
+      if (lastTurn == TurnDirection::Left) {
+        recommendation = TurnDirection::Right;
+      } else {
+        recommendation = TurnDirection::Left;
+      }
+      
+    }
+    break;
   }
   this->printDebugMessage("New turn recommendation: ");
   this->printDebugMessage(turnToString(recommendation));

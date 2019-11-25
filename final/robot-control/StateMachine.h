@@ -50,53 +50,34 @@ class IMUData {
 
 class LineFollowingData {
   public:
-    Direction currentTurningDirection = Direction::Left;
-    Direction lastLineSearchDirection = Direction::Left;
     unsigned long timeStartIdentIntersection = 0;
     unsigned long timeElapsedLineTurn = 0;
     bool followingLine = false;
     bool lineDetected = false;
-    bool ignoreLine = false;
-    unsigned int lineTurnAmount = 0;
-    unsigned int lineSearchTurns = 0;
     unsigned int linePosition = 0;
     unsigned int rawLineValues[8];
-    bool identifyingIntersection = false;
     bool intersectionHandled = true;
-    Intersection bestGuess;
     bool foundLineLeft = false;
     bool foundLineRight = false;
     bool foundLineForward = false;
     bool doneIntersectionFirstTurnStep = false;
+    bool lineLeftEnded = false;
+    bool lineRightEnded = false;
+    bool pulledAwayFromIntersection = false;
 };
 
-class LightFollowingData {
+class FlameFollowingData {
   public:
-    float lightReading = 0;
-    float lightForwardReading = 0;
-    Direction turnDirection = Direction::Left;
-    float lightAngle = 0;
-    bool linedUp = false;
-    bool found = false;
+    bool leftFlameDet = false;
+    bool rightFlameDet = false;
+    bool forwardFlameDet = false;
+    bool aligningWithFlame = false;
 };
 
 class MovementData {
   public:
-    unsigned long timeSinceLastForwardCheck = 0;
-    Direction clearTurnDirection = Direction::Left;
-    int backupTimeElapsed = 0;
     float aligningStartHeading = 0;
-    int currentAligningValue = 0;
     bool motorsEnabled = true;
-    int randomTurnAmount = 90;
-    unsigned long forwardCheckDelay = 0;
-};
-
-class ServoData {
-  public:
-    unsigned long timeOfLastSweep = 0;
-    unsigned int servoAngle = 0;
-    bool servoEnabled = false;
 };
 
 class StateMachine
@@ -108,22 +89,13 @@ class StateMachine
     State currentState;
     IMUData imuData;
     LineFollowingData lineData;
-    LightFollowingData lightData;
     MovementData moveData;
-    ServoData servoData;
+    FlameFollowingData flameData;
 
     // Transition Events
-    void emergencyBackupComplete();
     void lineDetected();
-    void aligningWithClearPathComplete();
-    void edgeDetected();
-    void objectDetected();
-    void checkForwardForObjectsClear();
-    void forwardCheckTimeout();
     void lineLostWhileFollowing();
     void endOfLineDetected();
-    void lightDetected();
-    void lightLost();
     void saveAligningStartHeading();
 
   private:
