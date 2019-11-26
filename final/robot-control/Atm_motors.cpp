@@ -16,6 +16,7 @@ Atm_motors& Atm_motors::begin(int motor_speed) {
   };
   // clang-format on
   Machine::begin( state_table, ELSE );
+  Serial.println("Initializing motors");
   motorFrontRight.setSpeed(motor_speed);
   motorFrontRight.run(RELEASE);
   motorBackRight.setSpeed(motor_speed);

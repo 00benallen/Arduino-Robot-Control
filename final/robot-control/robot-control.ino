@@ -9,10 +9,6 @@ const int MOTOR_SPEED_HIGH = 255;
 /** Sensors **/
 
 // 9-Axis IMU
-//#include <Wire.h>
-//#include <Adafruit_Sensor.h>
-//#include <Adafruit_BNO055.h>
-//Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 #include "Atm_imu.h"
 Atm_imu IMU;
 
@@ -21,12 +17,14 @@ Atm_imu IMU;
 //Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 // QTR Sensor
-#include <QTRSensors.h>
-QTRSensors qtr;
-
-// Auxilliary Line Sensors
-int leftLineAuxPin = 22;
-int rightLineAuxPin = 52;
+//#include <QTRSensors.h>
+//QTRSensors qtr;
+//
+//// Auxilliary Line Sensors
+//int leftLineAuxPin = 22;
+//int rightLineAuxPin = 52;
+#include "Atm_line_navigator.h"
+Atm_line_navigator lineNav;
 
 // Fire Sensors
 int leftFirePin = 30;
@@ -55,36 +53,47 @@ void setup()
 
   initializeIMU();
 
-  initializeAuxIRs();
+//  initializeAuxIRs();
 
   initializeFires();
 
   //  initializeTOF();
 
-  initializeQTR();
+//  initializeQTR();
+
+  lineNav.begin((const uint8_t[]) {53, 51, 49, 47, 45, 43, 41, 39}, 22, 52)
+  .onMotorChange( [] (int idx, int v, int up) {
+    switch (v) {
+      case Atm_line_navigator::MOTOR_LEFT:
+        motors.left();
+      return;
+      case Atm_line_navigator::MOTOR_RIGHT:
+        motors.right();
+      return;
+      case Atm_line_navigator::MOTOR_FORWARD:
+        motors.forward();
+      return;
+    }
+    return;
+   })
+  .calibrate()
+  .trace( Serial );
 }
 
 void initializeMotors() {
-  Serial.println("Initializing motors");
   motors.begin(MOTOR_SPEED_LOW).trace( Serial );
+//  motors.enable(); // comment out to disable motors
 }
 
 void initializeIMU() {
-  Serial.println("Initializing BNO055 9-axis IMU");
-  //  while (!bno.begin())
-  //  {
-  //    Serial.println("No BNO055 detected");
-  //    delay(1000);
-  //  }
-  //  Serial.println("BNO055 9-axis IMU detected and initialized");
   IMU.begin().trace( Serial );
 }
 
-void initializeAuxIRs() {
-  Serial.println("Initializing Auxillary IR Sensors");
-  pinMode(leftLineAuxPin, INPUT);
-  pinMode(rightLineAuxPin, INPUT);
-}
+//void initializeAuxIRs() {
+//  Serial.println("Initializing Auxillary IR Sensors");
+//  pinMode(leftLineAuxPin, INPUT);
+//  pinMode(rightLineAuxPin, INPUT);
+//}
 
 void initializeFires() {
   Serial.println("Flame Sensors");
@@ -103,58 +112,58 @@ void initializeFires() {
 //  Serial.println("VL53L0X laser TOF sensor detected");
 //}
 
-void initializeQTR() {
-
-  int sensorCount = 8;
-  Serial.println("Initializing QTC Reflectance Array");
-  qtr.setTypeRC();
-  qtr.setSensorPins((const uint8_t[]) {
-    53, 51, 49, 47, 45, 43, 41, 39
-  }, sensorCount);
-
-  Serial.println("Calibrating... sweep over line please");
-
-  // 2.5 ms RC read timeout (default) * 10 reads per calibrate() call
-  // = ~25 ms per calibrate() call.
-  // Call calibrate() 400 times to make calibration take about 10 seconds.
-  for (uint16_t i = 0; i < 100; i++)
-  {
-    if (i <= 25) {
-      motors.left();
-    } else if (i <= 75) {
-      motors.right();
-    } else {
-      motors.left();
-    }
-
-    qtr.calibrate();
-  }
-
-  // print the calibration minimum values measured when emitters were on
-  Serial.println("Minimum reflectance values");
-  for (uint8_t i = 0; i < sensorCount; i++)
-  {
-    Serial.print(qtr.calibrationOn.minimum[i]);
-    Serial.print(' ');
-  }
-  Serial.println();
-
-  // print the calibration maximum values measured when emitters were on
-  Serial.println("Maximum reflectance values");
-  for (uint8_t i = 0; i < sensorCount; i++)
-  {
-    Serial.print(qtr.calibrationOn.maximum[i]);
-    Serial.print(' ');
-  }
-  Serial.println();
-}
+//void initializeQTR() {
+//
+//  int sensorCount = 8;
+//  Serial.println("Initializing QTC Reflectance Array");
+//  qtr.setTypeRC();
+//  qtr.setSensorPins((const uint8_t[]) {
+//    53, 51, 49, 47, 45, 43, 41, 39
+//  }, sensorCount);
+//
+//  Serial.println("Calibrating... sweep over line please");
+//
+//  // 2.5 ms RC read timeout (default) * 10 reads per calibrate() call
+//  // = ~25 ms per calibrate() call.
+//  // Call calibrate() 400 times to make calibration take about 10 seconds.
+//  for (uint16_t i = 0; i < 100; i++)
+//  {
+//    if (i <= 25) {
+//      motors.left();
+//    } else if (i <= 75) {
+//      motors.right();
+//    } else {
+//      motors.left();
+//    }
+//
+//    qtr.calibrate();
+//  }
+//
+//  // print the calibration minimum values measured when emitters were on
+//  Serial.println("Minimum reflectance values");
+//  for (uint8_t i = 0; i < sensorCount; i++)
+//  {
+//    Serial.print(qtr.calibrationOn.minimum[i]);
+//    Serial.print(' ');
+//  }
+//  Serial.println();
+//
+//  // print the calibration maximum values measured when emitters were on
+//  Serial.println("Maximum reflectance values");
+//  for (uint8_t i = 0; i < sensorCount; i++)
+//  {
+//    Serial.print(qtr.calibrationOn.maximum[i]);
+//    Serial.print(' ');
+//  }
+//  Serial.println();
+//}
 
 void loop()
 {
   automaton.run();
 
   long loopStart = millis(); // useful for timing of various processes in run loop
-  pollLineSensors();
+//  pollLineSensors();
   pollFlameSensors();
 
   if (stateMach.flameData.leftFlameDet || stateMach.flameData.rightFlameDet || stateMach.flameData.forwardFlameDet || stateMach.flameData.aligningWithFlame) {
@@ -332,54 +341,54 @@ void loop()
   }
 }
 
-void pollLineSensors() {
-
-  // read calibrated sensor values and obtain a measure of the line position
-  // from 0 to 5000 (for a white line, use readLineWhite() instead)
-  int sensorCount = 8;
-  unsigned int sensorValues[8];
-  uint16_t position = qtr.readLineBlack(sensorValues);
-  memcpy(stateMach.lineData.rawLineValues, sensorValues, 8 * sizeof(unsigned int));
-
-  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
-  // reflectance and 1000 means minimum reflectance, followed by the line
-  // position
-  stateMach.lineData.lineDetected = false;
-  for (uint8_t i = 0; i < 8; i++)
-  {
-    unsigned int curReading = sensorValues[i];
-    Serial.print(curReading); Serial.print(" ");
-    if (curReading > 700) {
-      stateMach.lineData.lineDetected = true;
-      stateMach.lineData.followingLine = true;
-
-      if (i >= 2 && i <= 5) {
-        stateMach.lineData.foundLineForward = true;
-      }
-    }
-  }
-
-  Serial.print(position);
-  Serial.println();
-
-  stateMach.lineData.linePosition = position;
-
-  if (stateMach.lineData.intersectionHandled && stateMach.lineData.pulledAwayFromIntersection) {
-    if (digitalRead(leftLineAuxPin) == HIGH) {
-      Serial.println("FOUND LINE LEFT =========================================");
-      stateMach.lineData.foundLineLeft = true;
-    } else {
-      stateMach.lineData.lineLeftEnded = stateMach.lineData.foundLineLeft;
-    }
-
-    if (digitalRead(rightLineAuxPin) == HIGH) {
-      Serial.println("Found line right =========================================");
-      stateMach.lineData.foundLineRight = true;
-    } else {
-      stateMach.lineData.lineRightEnded = stateMach.lineData.foundLineRight;
-    }
-  }
-}
+//void pollLineSensors() {
+//
+//  // read calibrated sensor values and obtain a measure of the line position
+//  // from 0 to 5000 (for a white line, use readLineWhite() instead)
+//  int sensorCount = 8;
+//  unsigned int sensorValues[8];
+//  uint16_t position = qtr.readLineBlack(sensorValues);
+//  memcpy(stateMach.lineData.rawLineValues, sensorValues, 8 * sizeof(unsigned int));
+//
+//  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
+//  // reflectance and 1000 means minimum reflectance, followed by the line
+//  // position
+//  stateMach.lineData.lineDetected = false;
+//  for (uint8_t i = 0; i < 8; i++)
+//  {
+//    unsigned int curReading = sensorValues[i];
+//    Serial.print(curReading); Serial.print(" ");
+//    if (curReading > 700) {
+//      stateMach.lineData.lineDetected = true;
+//      stateMach.lineData.followingLine = true;
+//
+//      if (i >= 2 && i <= 5) {
+//        stateMach.lineData.foundLineForward = true;
+//      }
+//    }
+//  }
+//
+//  Serial.print(position);
+//  Serial.println();
+//
+//  stateMach.lineData.linePosition = position;
+//
+//  if (stateMach.lineData.intersectionHandled && stateMach.lineData.pulledAwayFromIntersection) {
+//    if (digitalRead(leftLineAuxPin) == HIGH) {
+//      Serial.println("FOUND LINE LEFT =========================================");
+//      stateMach.lineData.foundLineLeft = true;
+//    } else {
+//      stateMach.lineData.lineLeftEnded = stateMach.lineData.foundLineLeft;
+//    }
+//
+//    if (digitalRead(rightLineAuxPin) == HIGH) {
+//      Serial.println("Found line right =========================================");
+//      stateMach.lineData.foundLineRight = true;
+//    } else {
+//      stateMach.lineData.lineRightEnded = stateMach.lineData.foundLineRight;
+//    }
+//  }
+//}
 
 void pollFlameSensors() {
   if (digitalRead(leftFirePin) == LOW) {
