@@ -33,6 +33,10 @@ class Atm_line_navigator: public Machine {
   void pollLineSensors();
   bool lineUnderQtr;
   bool lineForwardDetected;
+  bool lineLeftDetected;
+  bool lineRightDetected;
+  bool lineRightEnded;
+  bool lineLeftEnded;
   
 };
 

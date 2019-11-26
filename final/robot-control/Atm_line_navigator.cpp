@@ -71,11 +71,25 @@ Atm_line_navigator& Atm_line_navigator::calibrate() {
 int Atm_line_navigator::event( int id ) {
   switch ( id ) {
     case EVT_GAP_DETECTED:
-      return 0;
+      if (lineUnderQtr) {
+        return 0;      
+      } else {
+        return 1;
+      }
     case EVT_INTERSECTION_LEFT_DETECTED:
-      return 0;
+      // we've seen a gap and are currently investigating its type, a line was detected on the left which has since ended, and no line was ever detected on the right
+      if (state() == IDENTIFY_INTERSECTION && lineLeftEnded && !lineRightDetected) { 
+        return 1;
+      } else {
+        return 0;
+      }
     case EVT_INTERSECTION_RIGHT_DETECTED:
-      return 0;
+      // we've seen a gap and are currently investigating its type, a line was detected on the right which has since ended, and no line was ever detected on the left
+      if (state() == IDENTIFY_INTERSECTION && lineLeftEnded && !lineLeftDetected) { 
+        return 1;
+      } else {
+        return 0;
+      }
   }
   return 0;
 }
@@ -90,9 +104,7 @@ void Atm_line_navigator::action( int id ) {
       return;
     case LP_FOLLOW_LINE:
       pollLineSensors();
-      //
       if (!lineUnderQtr) {
-        Serial.println("Motor go forward plz");
         delay(500);
         push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0); // by default go forward during this state, if we're here without a line something is wrong
       } else {
@@ -107,8 +119,12 @@ void Atm_line_navigator::action( int id ) {
 
       return;
     case ENT_IDENTIFY_INTERSECTION:
+      lineLeftDetected = false;
+      lineLeftEnded = false;
       return;
     case LP_IDENTIFY_INTERSECTION:
+      lineRightDetected = false;
+      lineRightEnded = false;
       return;
     case ENT_INTERSECTION_TURN:
       return;
@@ -146,6 +162,23 @@ void Atm_line_navigator::pollLineSensors() {
     }
   }
   Serial.println();
+
+  if (digitalRead(leftAuxPin) == HIGH) {
+    Serial.println("FOUND LINE LEFT =========================================");
+    lineLeftDetected = true;
+  } else {
+    if (lineLeftDetected) {
+      lineLeftEnded = true;
+    }
+  }
+
+  if (digitalRead(rightAuxPin) == HIGH) {
+    Serial.println("Found line right =========================================");
+    lineRightDetected = true;
+  } else {
+    if (lineRightDetected) {
+      lineRightEnded = true;
+    }
 }
 
 /* Optionally override the default trigger() method
