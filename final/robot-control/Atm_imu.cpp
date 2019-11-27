@@ -32,7 +32,11 @@ int Atm_imu::event( int id ) {
     case EVT_TRACK_TURN:
       return 0;
     case EVT_TURN_COMPLETE:
+      float diff = angleAbsDiff();
+      Serial.print("Start heading: "); Serial.println(turnStartHeading);
+      Serial.print("Angle diff: "); Serial.println(diff);
       if (angleAbsDiff() >= turnHeadingDifference) {
+        push(connectors, ON_TURNEND, 0, 0, 0);
         return 1;
       } else {
         return 0;
@@ -42,8 +46,7 @@ int Atm_imu::event( int id ) {
 }
 
 float Atm_imu::angleAbsDiff() {
-  float normDeg = currentTurnHeading - turnStartHeading;
-  return min(360 - normDeg, normDeg);
+  return 180 - abs(abs(currentTurnHeading - turnStartHeading) - 180);
 }
 
 /* Add C++ code for each action
@@ -58,6 +61,7 @@ void Atm_imu::action( int id ) {
     case ENT_IDLE:
       return;
     case LP_IDLE:
+      pollIMU();
       return;
     case ENT_TRACKING_TURN:
       turnStartHeading = currentTurnHeading;
@@ -67,6 +71,7 @@ void Atm_imu::action( int id ) {
       pollIMU();
       return;
     case EXT_TRACKING_TURN:
+      Serial.println("Notifying connectors of turn end");
       push( connectors, ON_TURNEND, 0, 0, 0 );
       turnComplete = true;
       return;
