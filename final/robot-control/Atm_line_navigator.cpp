@@ -226,7 +226,7 @@ void Atm_line_navigator::pollLineSensors() {
   Serial.println();
 
   if (digitalRead(leftAuxPin) == HIGH) {
-    Serial.println("FOUND LINE LEFT =========================================");
+//    Serial.println("FOUND LINE LEFT =========================================");
     lineLeftDetected = true;
   } else {
     if (lineLeftDetected) {
@@ -235,7 +235,7 @@ void Atm_line_navigator::pollLineSensors() {
   }
 
   if (digitalRead(rightAuxPin) == HIGH) {
-    Serial.println("Found line right =========================================");
+//    Serial.println("Found line right =========================================");
     lineRightDetected = true;
   } else {
     if (lineRightDetected) {

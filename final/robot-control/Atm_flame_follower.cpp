@@ -16,7 +16,7 @@ Atm_flame_follower& Atm_flame_follower::begin(int leftPin, int rightPin, int for
   };
   // clang-format on
   Machine::begin( state_table, ELSE );
-  Serial.println("Initializing flame sensors");
+  Serial.println("Initializing Flame Follower");
   this->leftPin = leftPin;
   this->rightPin = rightPin;
   this->forwardPin = forwardPin;
@@ -223,12 +223,12 @@ Atm_flame_follower& Atm_flame_follower::onFlamehandled( atm_cb_push_t callback, 
 */
 
 Atm_flame_follower& Atm_flame_follower::onMotorChange( Machine& machine, int event ) {
-  onPush( connectors, ON_FLAMEHANDLED, 0, 1, 1, machine, event );
+  onPush( connectors, ON_MOTOR_CHANGE, 0, 1, 1, machine, event );
   return *this;
 }
 
 Atm_flame_follower& Atm_flame_follower::onMotorChange( atm_cb_push_t callback, int idx ) {
-  onPush( connectors, ON_FLAMEHANDLED, 0, 1, 1, callback, idx );
+  onPush( connectors, ON_MOTOR_CHANGE, 0, 1, 1, callback, idx );
   return *this;
 }
 
@@ -237,7 +237,7 @@ Atm_flame_follower& Atm_flame_follower::onMotorChange( atm_cb_push_t callback, i
 */
 
 Atm_flame_follower& Atm_flame_follower::trace( Stream & stream ) {
-  Machine::setTrace( &stream, atm_serial_debug::trace,
-                     "FLAME_FOLLOWER\0EVT_SIDE_FLAME_DETECTED\0EVT_HALTING_COMPLETE\0EVT_FORWARD_FLAME_DETECTED\0EVT_BOOTH_AVOIDED\0EVT_BOOTH_TOO_CLOSE_RIGHT\0EVT_BOOTH_TOO_CLOSE_LEFT\0ELSE\0IDLE\0HALTING_FOR_FLAME\0TURNING_TOWARDS_FLAME\0STOPPED_IN_FRONT_OF_FLAME\0AVOIDING_BOOTH" );
+   Machine::setTrace( &stream, atm_serial_debug::trace,
+    "FLAME_FOLLOWER\0EVT_START\0EVT_SIDE_FLAME_DETECTED\0EVT_HALTING_COMPLETE\0EVT_FORWARD_FLAME_DETECTED\0EVT_BOOTH_AVOIDED\0EVT_BOOTH_TOO_CLOSE_RIGHT\0EVT_BOOTH_TOO_CLOSE_LEFT\0ELSE\0IDLE\0HALTING_FOR_FLAME\0TURNING_TOWARDS_FLAME\0STOPPED_IN_FRONT_OF_FLAME\0AVOIDING_BOOTH" );
   return *this;
 }

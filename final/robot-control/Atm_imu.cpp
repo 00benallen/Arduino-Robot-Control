@@ -13,7 +13,7 @@ Atm_imu& Atm_imu::begin() {
   };
   // clang-format on
   Machine::begin( state_table, ELSE );
-  Serial.println("Initializing BNO055 9-axis IMU");
+  Serial.println("Initializing IMU");
   while (!bno.begin())
   {
     Serial.println("No BNO055 detected");
@@ -83,7 +83,7 @@ void Atm_imu::pollIMU() {
   sensors_event_t orientationData;
   bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
   currentTurnHeading = orientationData.orientation.x;
-  Serial.print("Current heading: "); Serial.println(currentTurnHeading);
+//  Serial.print("Current heading: "); Serial.println(currentTurnHeading);
 }
 
 /* Optionally override the default trigger() method
