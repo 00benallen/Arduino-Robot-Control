@@ -30,8 +30,8 @@ void setup()
   Serial.begin(9800);
   Serial.println("[CPS603-Robot Control Program] starting up");
 
-  motors.begin(MOTOR_SPEED_LOW).trace( Serial );
-  motors.enable(); // comment out to disable motors
+//  motors.begin(MOTOR_SPEED_LOW).trace( Serial );
+//  motors.enable(); // comment out to disable motors
 
   IMU.begin().onTurnend(lineNav, Atm_line_navigator::EVT_INTERSECTION_TURN_COMPLETE).trace( Serial );
 
