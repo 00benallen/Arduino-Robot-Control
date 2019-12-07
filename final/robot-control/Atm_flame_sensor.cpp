@@ -10,14 +10,14 @@ Atm_flame_sensor& Atm_flame_sensor::begin(int analogPin) {
     /*                         ON_ENTER       ON_LOOP  ON_EXIT        EVT_ON    EVT_OFF  EVT_FLAME_DETECTED  EVT_NO_FLAME_DETECTED  EVT_DONE_CALIBRATING  ELSE */
     /* CALIBRATING */  ENT_CALIBRATING,           -1,      -1,           -1,  DISABLED,                 -1,                    -1,             NO_FLAME,   -1,
     /*    NO_FLAME */               -1,  LP_NO_FLAME,      -1,           -1,  DISABLED,              FLAME,                    -1,                   -1,   -1,
-    /*       FLAME */               -1,     LP_FLAME,      -1,           -1,  DISABLED,                 -1,              NO_FLAME,                   -1,   -1,
+    /*       FLAME */        ENT_FLAME,     LP_FLAME,      -1,           -1,  DISABLED,                 -1,              NO_FLAME,                   -1,   -1,
     /*    DISABLED */     ENT_DISABLED,           -1,      -1,  CALIBRATING,        -1,                 -1,                    -1,                   -1,   -1,
   };
   // clang-format on
   Machine::begin( state_table, ELSE );
   this->analogPin = analogPin;
   pinMode(analogPin, INPUT);
-  smoothed.begin(SMOOTHED_EXPONENTIAL, 5);
+  smoothed.begin(SMOOTHED_EXPONENTIAL, 30);
   return *this;
 }
 
@@ -32,17 +32,17 @@ int Atm_flame_sensor::event( int id ) {
     case EVT_OFF:
       return 0;
     case EVT_FLAME_DETECTED:
-      if (state() == FLAME && !fire) {
-        push (connectors, ON_CHANGE, 0, fire, 0);
-      }
-
-      return fire;
-    case EVT_NO_FLAME_DETECTED:
       if (state() == NO_FLAME && fire) {
         push (connectors, ON_CHANGE, 0, fire, 0);
       }
 
       return fire;
+    case EVT_NO_FLAME_DETECTED:
+      if (state() == FLAME && !fire) {
+        push (connectors, ON_CHANGE, 0, fire, 0);
+      }
+
+      return !fire;
     case EVT_DONE_CALIBRATING:
       if (state() == CALIBRATING) {
         return calibratingDone;
@@ -64,11 +64,27 @@ void Atm_flame_sensor::action( int id ) {
     case ENT_CALIBRATING:
       calibrateSensor();
       return;
-    case LP_NO_FLAME:
-      pollSensor();
-      return;
-    case LP_FLAME:
-      return;
+    case LP_NO_FLAME: {
+        float sensorValue = pollSensor();
+        float sensorDiff = ambientMin - sensorValue;
+        Serial.print(sensorValue); Serial.print(" / "); Serial.println(sensorDiff);
+        float threshold = 10; // TODO refine
+        if (sensorDiff >= threshold) {
+          fire = true;
+        }
+        return;
+      }
+    case ENT_FLAME:
+      Serial.println("Flame detected");
+      break;
+    case LP_FLAME: {
+        float sensorValue = pollSensor();
+        Serial.println(sensorValue);
+        if (sensorValue >= ambientMin) {
+          fire = false;
+        }
+        return;
+      }
     case ENT_DISABLED:
       return;
   }
@@ -76,29 +92,34 @@ void Atm_flame_sensor::action( int id ) {
 
 void Atm_flame_sensor::calibrateSensor() {
   // TODO see if we actually need to calibrate anything
+
+  Serial.print("Calibrating sensor on pin "); Serial.println(analogPin);
+  float min = 1000, max = 0;
+  for (int i = 0; i < 400; i++) {
+    float cur = pollSensor();
+    if (cur < min) {
+      min = cur;
+    } else if (cur > max) {
+      max = cur;
+    }
+    delay(1);
+  }
+  ambientMin = min;
+  ambientMax = max;
+  Serial.print("Ambient min/max for sensor on pin "); Serial.println(analogPin);
+  Serial.print(ambientMin); Serial.print(" / "); Serial.println(ambientMax);
+
   calibratingDone = true;
 }
 
-void Atm_flame_sensor::pollSensor() {
+float Atm_flame_sensor::pollSensor() {
   float currentSensorValue = analogRead(analogPin);
 
   smoothed.add(currentSensorValue);
-  float smoothedSensorValueExp = smoothed.get();
-
-//  fire = smoothedSensorValueExp < 900;
-//  Serial.print(currentSensorValue); Serial.print("\t"); Serial.print(smoothedSensorValueExp); Serial.print("\t"); Serial.println(1000 * fire);
+  float smoothedSensorValue = smoothed.get();
 
   // Compute running slope, we want the running derivative of the temperature function
-  float runningSlope = smoothedSensorValueExp - previousValue;
-
-  float threshold = 10; // TODO refine
-  if (runningSlope >= threshold) {
-    fire = true;
-  } else {
-    fire = false;
-  }
-
-  previousValue = smoothedSensorValueExp;
+  return smoothedSensorValue;
 }
 
 /* Optionally override the default trigger() method

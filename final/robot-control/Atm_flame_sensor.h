@@ -19,7 +19,7 @@ class Atm_flame_sensor: public Machine {
   Atm_flame_sensor& off( void );
 
  private:
-  enum { ENT_CALIBRATING, LP_NO_FLAME, LP_FLAME, ENT_DISABLED }; // ACTIONS
+  enum { ENT_CALIBRATING, LP_NO_FLAME, ENT_FLAME, LP_FLAME, ENT_DISABLED }; // ACTIONS
   enum { ON_CHANGE, CONN_MAX }; // CONNECTORS
   atm_connector connectors[CONN_MAX];
   int event( int id ); 
@@ -28,8 +28,8 @@ class Atm_flame_sensor: public Machine {
   bool fire;
   bool calibratingDone;
   void calibrateSensor();
-  void pollSensor();
-  float previousValue;
+  float pollSensor();
+  float ambientMin; float ambientMax;
   Smoothed <float> smoothed;
 };
 

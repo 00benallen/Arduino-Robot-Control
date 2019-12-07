@@ -1,12 +1,13 @@
 #pragma once
 
 #include <Automaton.h>
+#include <Smoothed.h>
 
 class Atm_flame_follower: public Machine {
 
  public:
-  enum { IDLE, HALTING_FOR_FLAME, TURNING_TOWARDS_FLAME, STOPPED_IN_FRONT_OF_FLAME, AVOIDING_BOOTH }; // STATES
-  enum { EVT_START, EVT_SIDE_FLAME_DETECTED, EVT_HALTING_COMPLETE, EVT_FORWARD_FLAME_DETECTED, EVT_BOOTH_AVOIDED, EVT_BOOTH_TOO_CLOSE_RIGHT, EVT_BOOTH_TOO_CLOSE_LEFT, ELSE }; // EVENTS
+  enum { CALIBRATING, IDLE, HALTING_FOR_FLAME, TURNING_TOWARDS_FLAME, APPROACHING_FLAME, AVOIDING_BOOTH, DISABLED }; // STATES
+  enum { EVT_START, EVT_STOP, EVT_SIDE_FLAME_DETECTED, EVT_HALTING_COMPLETE, EVT_FORWARD_FLAME_DETECTED, EVT_BOOTH_AVOIDED, EVT_BOOTH_TOO_CLOSE_RIGHT, EVT_BOOTH_TOO_CLOSE_LEFT, EVT_DONE_CALIBRATING, ELSE }; // EVENTS
   enum Direction { D_LEFT, D_RIGHT, D_FORWARD, D_NONE };
   enum { MOTOR_LEFT, MOTOR_RIGHT, MOTOR_FORWARD, MOTOR_STOP }; // Helpful enum for onMotorChange event processing
   Atm_flame_follower( void ) : Machine() {};
@@ -20,24 +21,34 @@ class Atm_flame_follower: public Machine {
   Atm_flame_follower& onFlamehandled( atm_cb_push_t callback, int idx = 0 );
   Atm_flame_follower& onMotorChange( Machine& machine, int event = 0 );
   Atm_flame_follower& onMotorChange( atm_cb_push_t callback, int idx = 0 );
-  Atm_flame_follower& side_flame_detected( void );
-  Atm_flame_follower& halting_complete( void );
-  Atm_flame_follower& forward_flame_detected( void );
-  Atm_flame_follower& booth_avoided( void );
-  Atm_flame_follower& booth_too_close_right( void );
-  Atm_flame_follower& booth_too_close_left( void );
+  Atm_flame_follower& onApproachingBall( Machine& machine, int event = 0 );
+  Atm_flame_follower& onApproachingBall( atm_cb_push_t callback, int idx = 0 );
+  Atm_flame_follower& start( void );
+  Atm_flame_follower& stop( void );
 
  private:
-  enum { LP_IDLE, ENT_HALTING_FOR_FLAME, LP_TURNING_TOWARDS_FLAME, ENT_STOPPED_IN_FRONT_OF_FLAME, LP_AVOIDING_BOOTH }; // ACTIONS
-  enum { ON_FLAMEDETECTED, ON_FLAMEHANDLED, ON_MOTOR_CHANGE, CONN_MAX }; // CONNECTORS
+  enum { LP_IDLE, ENT_CALIBRATING, ENT_HALTING_FOR_FLAME, LP_TURNING_TOWARDS_FLAME, ENT_APPROACHING_FLAME, LP_APPROACHING_FLAME, LP_AVOIDING_BOOTH, ENT_DISABLED }; // ACTIONS
+  enum { ON_FLAMEDETECTED, ON_FLAMEHANDLED, ON_MOTOR_CHANGE, ON_APPROACHING_BALL, CONN_MAX }; // CONNECTORS
   atm_connector connectors[CONN_MAX];
   int event( int id ); 
   void action( int id ); 
   int leftPin, rightPin, forwardPin;
   void pollFlameSensors();
+  void calibrateSensors();
   bool forwardFlameDet, rightFlameDet, leftFlameDet;
+  bool doneCalibrating;
   Direction flameSide = D_NONE;
   atm_timer_millis halt_timer;
+  Smoothed <float> smoothedRight;
+  Smoothed <float> smoothedLeft;
+  Smoothed <float> smoothedForward;
+  float ambientMinLeft = 1000, ambientMinRight = 1000, ambientMinForward = 1000;
+  float ambientMaxLeft = 0, ambientMaxRight = 0, ambientMaxForward = 0;
+//  float approachingPeak = 0;
+//  Direction approachingTurn;
+//  float rawForwardValues[5];
+//  int rawForwardValuesInd;
+//  bool peak = true;
 
 };
 

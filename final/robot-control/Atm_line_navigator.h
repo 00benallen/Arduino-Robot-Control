@@ -23,6 +23,8 @@ class Atm_line_navigator: public Machine {
   Atm_line_navigator& onMotorChange( atm_cb_push_t callback, int idx = 0 );
   Atm_line_navigator& onTurnStart( Machine& machine, int event = 0 );
   Atm_line_navigator& onTurnStart( atm_cb_push_t callback, int idx = 0 );
+  Atm_line_navigator& onTurnEnd( Machine& machine, int event = 0 );
+  Atm_line_navigator& onTurnEnd( atm_cb_push_t callback, int idx = 0 );
   Atm_line_navigator& start( void );
   Atm_line_navigator& stop( void );
   Atm_line_navigator& calibrate( void );
@@ -31,8 +33,7 @@ class Atm_line_navigator: public Machine {
   enum { ENT_FOLLOW_LINE, LP_FOLLOW_LINE, ENT_IDENTIFY_INTERSECTION, LP_IDENTIFY_INTERSECTION, ENT_INTERSECTION_TURN, LP_INTERSECTION_TURN, ENT_INTERSECTION_ALIGN, LP_INTERSECTION_ALIGN, EXT_INTERSECTION_ALIGN, ENT_CALIBRATING }; // ACTIONS
   int event( int id ); 
   void action( int id );
-  enum { ON_MOTOR_CHANGE, ON_TURN_START, CONN_MAX }; // CONNECTORS
-  
+  enum { ON_MOTOR_CHANGE, ON_TURN_START, ON_TURN_END, CONN_MAX }; // CONNECTORS
   atm_connector connectors[CONN_MAX];
   QTRSensors qtr;
   int leftAuxPin, rightAuxPin;
@@ -47,6 +48,7 @@ class Atm_line_navigator: public Machine {
   AlignDirection alignDirection;
   bool imuTurnComplete;
   bool doneCalibrating;
+  bool justTurned = true;
   
   
 };

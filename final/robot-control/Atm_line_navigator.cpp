@@ -94,27 +94,43 @@ void Atm_line_navigator::action( int id ) {
       return;
     case LP_FOLLOW_LINE:
       pollLineSensors();
-      if (!lineUnderQtr) {
-        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0); // by default go forward during this state, if we're here without a line something is wrong
+
+      if (lineLeftEnded || lineRightEnded) {
+        push ( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
       } else {
-        if (linePosition < 1000) {
-          push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0);
-        } else if (linePosition > 6000) {
-          push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+        if (!lineUnderQtr) {
+          Serial.println("GAP");
+          if (justTurned) {
+            Serial.println("Turning flame sensor on");
+            push (connectors, ON_TURN_END, 0, 0, 0);
+            justTurned = false;
+          } else {
+            Serial.println("Not just turned, not turning flame sensors on");
+          }
+
+          push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0); // by default go forward during this state, if we're here without a line something is wrong
         } else {
-          push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0);
+          if (linePosition < 1500) {
+            push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0);
+          } else if (linePosition > 5500) {
+            push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+          } else {
+            push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0);
+          }
         }
       }
-
       return;
     case ENT_IDENTIFY_INTERSECTION:
       // TODO maybe remove state
       return;
     case LP_IDENTIFY_INTERSECTION:
-      // TODO maybe remove state      
+      // TODO maybe remove state
       return;
     case ENT_INTERSECTION_TURN:
-      push ( connectors, ON_TURN_START, 0, 30, 0 ); // 30 degrees
+      justTurned = true;
+      Serial.println("Just turned true");
+
+      push ( connectors, ON_TURN_START, 0, 45, 0 ); // degrees
       if (lineLeftEnded || lineRightEnded) {
 
         if (lineRightDetected && lineLeftDetected) {
@@ -136,17 +152,19 @@ void Atm_line_navigator::action( int id ) {
 
       return;
     case ENT_INTERSECTION_ALIGN:
+      push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0);
+      delay(200);
 
       return;
     case LP_INTERSECTION_ALIGN:
       pollLineSensors();
       push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
-      delayMicroseconds(1);
-      
+      delayMicroseconds(200);
+
       if (alignDirection == AlignDirection::ALIGN_LEFT) {
-        
+
         push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
-        
+
       } else {
         push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0);
       }
@@ -177,6 +195,7 @@ Atm_line_navigator& Atm_line_navigator::calibrate() {
 
     qtr.calibrate();
   }
+  push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
 
   // print the calibration minimum values measured when emitters were on
   Serial.println("Minimum reflectance values");
@@ -200,33 +219,9 @@ Atm_line_navigator& Atm_line_navigator::calibrate() {
 }
 
 void Atm_line_navigator::pollLineSensors() {
-  // read calibrated sensor values and obtain a measure of the line position
-  // from 0 to 5000 (for a white line, use readLineWhite() instead)
-  int sensorCount = 8;
-  unsigned int sensorValues[sensorCount];
-  linePosition = qtr.readLineBlack(sensorValues);
-  Serial.print("Position: "); Serial.print(linePosition); Serial.print(" Raw values: ");
-
-  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
-  // reflectance and 1000 means minimum reflectance, followed by the line
-  // position
-  lineUnderQtr = false;
-  for (uint8_t i = 0; i < sensorCount; i++)
-  {
-    unsigned int curReading = sensorValues[i];
-    Serial.print(curReading); Serial.print(" ");
-    if (curReading > 500) {
-      lineUnderQtr = true;
-
-      if (i >= 2 && i <= 5) {
-        lineForwardDetected = true;
-      }
-    }
-  }
-  Serial.println();
 
   if (digitalRead(leftAuxPin) == HIGH) {
-//    Serial.println("FOUND LINE LEFT =========================================");
+    //    Serial.println("FOUND LINE LEFT =========================================");
     lineLeftDetected = true;
   } else {
     if (lineLeftDetected) {
@@ -235,13 +230,38 @@ void Atm_line_navigator::pollLineSensors() {
   }
 
   if (digitalRead(rightAuxPin) == HIGH) {
-//    Serial.println("Found line right =========================================");
+    //    Serial.println("Found line right =========================================");
     lineRightDetected = true;
   } else {
     if (lineRightDetected) {
       lineRightEnded = true;
     }
   }
+  
+  // read calibrated sensor values and obtain a measure of the line position
+  // from 0 to 5000 (for a white line, use readLineWhite() instead)
+  int sensorCount = 8;
+  unsigned int sensorValues[sensorCount];
+  linePosition = qtr.readLineBlack(sensorValues);
+//  Serial.print("Position: "); Serial.print(linePosition); Serial.print(" Raw values: ");
+
+  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
+  // reflectance and 1000 means minimum reflectance, followed by the line
+  // position
+  lineUnderQtr = false;
+  for (uint8_t i = 0; i < sensorCount; i++)
+  {
+    unsigned int curReading = sensorValues[i];
+    //    Serial.print(curReading); Serial.print(" ");
+    if (curReading > 900) {
+      lineUnderQtr = true;
+
+      if (i >= 2 && i <= 5) {
+        lineForwardDetected = true;
+      }
+    }
+  }
+  //  Serial.println();
 }
 
 /* Optionally override the default trigger() method
@@ -315,6 +335,20 @@ Atm_line_navigator& Atm_line_navigator::onTurnStart( Machine & machine, int even
 
 Atm_line_navigator& Atm_line_navigator::onTurnStart( atm_cb_push_t callback, int idx ) {
   onPush( connectors, ON_TURN_START, 0, 1, 1, callback, idx );
+  return *this;
+}
+
+/*
+   onTurnEnd() push connector variants ( slots 1, autostore 0, broadcast 0 )
+*/
+
+Atm_line_navigator& Atm_line_navigator::onTurnEnd( Machine & machine, int event ) {
+  onPush( connectors, ON_TURN_END, 0, 1, 1, machine, event );
+  return *this;
+}
+
+Atm_line_navigator& Atm_line_navigator::onTurnEnd( atm_cb_push_t callback, int idx ) {
+  onPush( connectors, ON_TURN_END, 0, 1, 1, callback, idx );
   return *this;
 }
 

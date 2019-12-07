@@ -3,7 +3,7 @@
 Atm_motors motors(3, 4, 2, 1);
 
 /** Motor Constants **/
-const int MOTOR_SPEED_LOW = 120;
+const int MOTOR_SPEED_LOW = 110;
 const int MOTOR_SPEED_HIGH = 255;
 
 /** Sensors **/
@@ -22,6 +22,15 @@ Atm_line_navigator lineNav;
 #include "Atm_flame_follower.h"
 Atm_flame_follower flameFollower;
 
+#include "Atm_flame_sensor.h"
+Atm_flame_sensor flameLeft;
+Atm_flame_sensor flameRight;
+Atm_flame_sensor flameForward;
+
+/** Grabber **/
+#include "Atm_ball_grabber.h"
+Atm_ball_grabber ball_grabber;
+
 /** Miscellaneous **/
 int randomSeedPin = 15;
 
@@ -30,16 +39,28 @@ void setup()
   Serial.begin(9800);
   Serial.println("[CPS603-Robot Control Program] starting up");
 
-//  motors.begin(MOTOR_SPEED_LOW).trace( Serial );
-//  motors.enable(); // comment out to disable motors
+  ball_grabber.begin( 30, 32 ).trace ( Serial ).stop().onBallgrabbed( [] (int idx, int v, int up) {
 
-  IMU.begin().onTurnend(lineNav, Atm_line_navigator::EVT_INTERSECTION_TURN_COMPLETE).trace( Serial );
+    flameFollower.stop();
+    motors.stop();
+    
+  });
+
+  motors.begin(MOTOR_SPEED_LOW).trace( Serial );
+  motors.enable(); // comment out to disable motors
+  
+  
+//
+  IMU.begin()
+  .onTurnend(lineNav, Atm_line_navigator::EVT_INTERSECTION_TURN_COMPLETE)
+  .trace( Serial );
 
   //  initializeTOF();
 
-  flameFollower.begin(30, 31, 29)
+  flameFollower.begin(A8, A9, A10)
   .trace ( Serial )
   .onMotorChange( [] (int idx, int v, int up) {
+    Serial.println(v);
     switch (v) {
       case Atm_line_navigator::MOTOR_LEFT:
         motors.left();
@@ -58,7 +79,8 @@ void setup()
   })
   .onFlamedetected( lineNav, Atm_line_navigator::EVT_STOP )
   .onFlamehandled( lineNav, Atm_line_navigator::EVT_START )
-  .trigger ( Atm_flame_follower::EVT_START );
+  .onApproachingBall ( ball_grabber, Atm_ball_grabber::EVT_START )
+  .stop();
 
   lineNav.begin((const uint8_t[]) {
     53, 51, 49, 47, 45, 43, 41, 39
@@ -82,11 +104,13 @@ void setup()
   })
   .onTurnStart([] (int idx, int v, int up) {
     IMU.track_turn(v);
+    flameFollower.stop();
+  })
+  .onTurnEnd([] (int idx, int v, int up) {
+    flameFollower.start();
   })
   .trace( Serial )
   .start();
-
-  
 }
 
 //void initializeTOF() {
