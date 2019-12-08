@@ -7,13 +7,15 @@
 Atm_line_navigator& Atm_line_navigator::begin(const uint8_t qtrPins[], int leftAuxPin, int rightAuxPin) {
   // clang-format off
   const static state_t state_table[] PROGMEM = {
-    /*                                           ON_ENTER                   ON_LOOP                  ON_EXIT    EVT_START       EVT_GAP_DETECTED  EVT_INTERSECTION_LEFT_DETECTED  EVT_INTERSECTION_RIGHT_DETECTED  EVT_INTERSECTION_TURN_COMPLETE  EVT_INTERSECTION_ALIGN_COMPLETE  EVT_DONE_CALIBRATING  EVT_STOP  ELSE */
-    /*           FOLLOW_LINE */           ENT_FOLLOW_LINE,           LP_FOLLOW_LINE,                      -1, CALIBRATING,                    -1,              INTERSECTION_TURN,               INTERSECTION_TURN,                              -1,                             -1,                  -1,     IDLE,   -1,
-    /* IDENTIFY_INTERSECTION */ ENT_IDENTIFY_INTERSECTION, LP_IDENTIFY_INTERSECTION,                      -1, CALIBRATING,                    -1,              INTERSECTION_TURN,               INTERSECTION_TURN,                              -1,                             -1,                  -1,     IDLE,   -1,
-    /*     INTERSECTION_TURN */     ENT_INTERSECTION_TURN,     LP_INTERSECTION_TURN,                      -1, CALIBRATING,                    -1,                             -1,                              -1,              INTERSECTION_ALIGN,                             -1,                  -1,     IDLE,   -1,
-    /*    INTERSECTION_ALIGN */    ENT_INTERSECTION_ALIGN,    LP_INTERSECTION_ALIGN,  EXT_INTERSECTION_ALIGN, CALIBRATING,                    -1,                             -1,                              -1,                              -1,                    FOLLOW_LINE,                  -1,     IDLE,   -1,
-    /*           CALIBRATING */           ENT_CALIBRATING,                       -1,                      -1, CALIBRATING,                    -1,                             -1,                              -1,                              -1,                             -1,         FOLLOW_LINE,     IDLE,   -1,
-    /*                  IDLE */                        -1,                       -1,                      -1, CALIBRATING,                    -1,                             -1,                              -1,                              -1,                             -1,                  -1,     IDLE,   -1,
+    /*                                           ON_ENTER                   ON_LOOP                  ON_EXIT     EVT_START       EVT_GAP_DETECTED  EVT_INTERSECTION_LEFT_DETECTED  EVT_INTERSECTION_RIGHT_DETECTED  EVT_INTERSECTION_TURN_COMPLETE  EVT_INTERSECTION_ALIGN_COMPLETE  EVT_DONE_CALIBRATING  EVT_STOP  EVT_BALL_GRABBED  EVT_DROPOFF_DETECTED  ELSE */
+    /*           FOLLOW_LINE */           ENT_FOLLOW_LINE,           LP_FOLLOW_LINE,                      -1,  CALIBRATING,                    -1,              INTERSECTION_TURN,               INTERSECTION_TURN,                              -1,                             -1,                  -1,     IDLE,               -1,           TURN_AROUND,  -1,
+    /* IDENTIFY_INTERSECTION */ ENT_IDENTIFY_INTERSECTION, LP_IDENTIFY_INTERSECTION,                      -1,  CALIBRATING,                    -1,              INTERSECTION_TURN,               INTERSECTION_TURN,                              -1,                             -1,                  -1,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
+    /*     INTERSECTION_TURN */     ENT_INTERSECTION_TURN,     LP_INTERSECTION_TURN,                      -1,  CALIBRATING,                    -1,                             -1,                              -1,              INTERSECTION_ALIGN,                             -1,                  -1,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
+    /*    INTERSECTION_ALIGN */    ENT_INTERSECTION_ALIGN,    LP_INTERSECTION_ALIGN,  EXT_INTERSECTION_ALIGN,  CALIBRATING,                    -1,                             -1,                              -1,                              -1,                    FOLLOW_LINE,                  -1,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
+    /*           CALIBRATING */           ENT_CALIBRATING,                       -1,                      -1,  CALIBRATING,                    -1,                             -1,                              -1,                              -1,                             -1,         FOLLOW_LINE,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
+    /*        BACKUP_TO_LINE */        ENT_BACKUP_TO_LINE,        LP_BACKUP_TO_LINE,                      -1,  CALIBRATING,                    -1,              INTERSECTION_TURN,               INTERSECTION_TURN,                              -1,                             -1,                  -1,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
+    /*           TURN_AROUND */           ENT_TURN_AROUND,           LP_TURN_AROUND,         EXT_TURN_AROUND,  CALIBRATING,                    -1,              INTERSECTION_TURN,               INTERSECTION_TURN,                              -1,                    FOLLOW_LINE,                  -1,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
+    /*                  IDLE */                        -1,                       -1,                      -1,  CALIBRATING,                    -1,                             -1,                              -1,                              -1,                             -1,                  -1,     IDLE,   BACKUP_TO_LINE,                    -1,  -1,
   };
   // clang-format on
   Machine::begin( state_table, ELSE );
@@ -51,14 +53,15 @@ int Atm_line_navigator::event( int id ) {
       }
     case EVT_INTERSECTION_LEFT_DETECTED:
       // we've seen a gap and are currently investigating its type, a line was detected on the left which has since ended, and no line was ever detected on the right
-      if (state() == FOLLOW_LINE && lineLeftEnded) {
+      if ((state() == FOLLOW_LINE || state() == BACKUP_TO_LINE) && lineLeftEnded) {
+        Serial.println("Left detected");
         return 1;
       } else {
         return 0;
       }
     case EVT_INTERSECTION_RIGHT_DETECTED:
       // we've seen a gap and are currently investigating its type, a line was detected on the right which has since ended, and no line was ever detected on the left
-      if (state() == FOLLOW_LINE && lineRightEnded) {
+      if ((state() == FOLLOW_LINE || state() == BACKUP_TO_LINE) && lineRightEnded) {
         return 1;
       } else {
         return 0;
@@ -73,6 +76,9 @@ int Atm_line_navigator::event( int id ) {
       Serial.println("Checking if intersection alignment finished");
       if (state() == INTERSECTION_ALIGN && lineUnderQtr) {
         Serial.println("Yep!");
+        return 1;
+      } else if (state() == TURN_AROUND && lineLeftEnded && lineRightEnded && lineUnderQtr) {
+        Serial.println("Turn Around alignment complete!");
         return 1;
       } else {
         Serial.println("Nope");
@@ -94,7 +100,6 @@ void Atm_line_navigator::action( int id ) {
       return;
     case LP_FOLLOW_LINE:
       pollLineSensors();
-
       if (lineLeftEnded || lineRightEnded) {
         push ( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
       } else {
@@ -153,7 +158,7 @@ void Atm_line_navigator::action( int id ) {
       return;
     case ENT_INTERSECTION_ALIGN:
       push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0);
-      delay(200);
+      delay(100);
 
       return;
     case LP_INTERSECTION_ALIGN:
@@ -176,10 +181,44 @@ void Atm_line_navigator::action( int id ) {
       lineRightDetected = false;
       lineRightEnded = false;
       return;
+    case ENT_BACKUP_TO_LINE:
+      ballGrabbed = true;
+      return;
+    case LP_BACKUP_TO_LINE:
+      pollLineSensors();
+      Serial.println("Line sensors polled");
+      push (connectors, ON_MOTOR_CHANGE, 0, MOTOR_BACKWARD, 0);
+    case ENT_TURN_AROUND:
+      return;
+    case LP_TURN_AROUND:
+      pollLineSensors();
+      
+      if (lineLeftEnded && lineRightEnded) {
+
+        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
+        delayMicroseconds(200);
+        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+
+      } else {
+        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+      }
+
+      return;
+    case EXT_TURN_AROUND:
+      lineLeftDetected = false;
+      lineLeftEnded = false;
+      lineRightDetected = false;
+      lineRightEnded = false;
+      return;
   }
 }
 
 Atm_line_navigator& Atm_line_navigator::calibrate() {
+
+  if (doneCalibrating) {
+    return;
+  }
+
   int sensorCount = 8;
   // 2.5 ms RC read timeout (default) * 10 reads per calibrate() call
   // = ~25 ms per calibrate() call.
@@ -237,13 +276,13 @@ void Atm_line_navigator::pollLineSensors() {
       lineRightEnded = true;
     }
   }
-  
+
   // read calibrated sensor values and obtain a measure of the line position
   // from 0 to 5000 (for a white line, use readLineWhite() instead)
   int sensorCount = 8;
   unsigned int sensorValues[sensorCount];
   linePosition = qtr.readLineBlack(sensorValues);
-//  Serial.print("Position: "); Serial.print(linePosition); Serial.print(" Raw values: ");
+  //  Serial.print("Position: "); Serial.print(linePosition); Serial.print(" Raw values: ");
 
   // print the sensor values as numbers from 0 to 1000, where 0 means maximum
   // reflectance and 1000 means minimum reflectance, followed by the line
@@ -301,12 +340,24 @@ AlignDirection operator!( AlignDirection d ) {
 */
 
 Atm_line_navigator& Atm_line_navigator::start() {
+  Serial.println("Starting");
   trigger( EVT_START );
   return *this;
 }
 
 Atm_line_navigator& Atm_line_navigator::stop() {
   trigger( EVT_STOP );
+  return *this;
+}
+
+Atm_line_navigator& Atm_line_navigator::backup ( void ) {
+  trigger( EVT_BALL_GRABBED );
+  ballGrabbed = true;
+  return *this;
+}
+
+Atm_line_navigator& Atm_line_navigator::dropoff_detected ( void ) {
+  trigger( EVT_DROPOFF_DETECTED );
   return *this;
 }
 
@@ -358,6 +409,6 @@ Atm_line_navigator& Atm_line_navigator::onTurnEnd( atm_cb_push_t callback, int i
 
 Atm_line_navigator& Atm_line_navigator::trace( Stream & stream ) {
   Machine::setTrace( &stream, atm_serial_debug::trace,
-                     "LINE_NAVIGATOR\0EVT_START\0EVT_GAP_DETECTED\0EVT_INTERSECTION_LEFT_DETECTED\0EVT_INTERSECTION_RIGHT_DETECTED\0EVT_INTERSECTION_TURN_COMPLETE\0EVT_INTERSECTION_ALIGN_COMPLETE\0EVT_DONE_CALIBRATING\0EVT_STOP\0ELSE\0FOLLOW_LINE\0IDENTIFY_INTERSECTION\0INTERSECTION_TURN\0INTERSECTION_ALIGN\0CALIBRATING\0IDLE" );
+                     "LINE_NAVIGATOR\0EVT_START\0EVT_GAP_DETECTED\0EVT_INTERSECTION_LEFT_DETECTED\0EVT_INTERSECTION_RIGHT_DETECTED\0EVT_INTERSECTION_TURN_COMPLETE\0EVT_INTERSECTION_ALIGN_COMPLETE\0EVT_DONE_CALIBRATING\0EVT_STOP\0EVT_BALL_GRABBED\0EVT_DROPOFF_DETECTED\0ELSE\0FOLLOW_LINE\0IDENTIFY_INTERSECTION\0INTERSECTION_TURN\0INTERSECTION_ALIGN\0CALIBRATING\0BACKUP_TO_LINE\0TURN_AROUND\0IDLE" );
   return *this;
 }

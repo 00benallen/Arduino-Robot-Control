@@ -3,7 +3,7 @@
 Atm_motors motors(3, 4, 2, 1);
 
 /** Motor Constants **/
-const int MOTOR_SPEED_LOW = 110;
+const int MOTOR_SPEED_LOW = 120;
 const int MOTOR_SPEED_HIGH = 255;
 
 /** Sensors **/
@@ -22,14 +22,9 @@ Atm_line_navigator lineNav;
 #include "Atm_flame_follower.h"
 Atm_flame_follower flameFollower;
 
-#include "Atm_flame_sensor.h"
-Atm_flame_sensor flameLeft;
-Atm_flame_sensor flameRight;
-Atm_flame_sensor flameForward;
-
 /** Grabber **/
 #include "Atm_ball_grabber.h"
-Atm_ball_grabber ball_grabber;
+Atm_ball_grabber ball_grabber(31, 29);
 
 /** Miscellaneous **/
 int randomSeedPin = 15;
@@ -39,18 +34,22 @@ void setup()
   Serial.begin(9800);
   Serial.println("[CPS603-Robot Control Program] starting up");
 
-  ball_grabber.begin( 30, 32 ).trace ( Serial ).stop().onBallgrabbed( [] (int idx, int v, int up) {
+  ball_grabber.begin().trace ( Serial ).stop().onBallgrabbed( [] (int idx, int v, int up) {
 
+    Serial.println("Stopping flame follower");
     flameFollower.stop();
+    Serial.println("Stoppping motors");
     motors.stop();
-    
+    Serial.println("Restarting line nav");
+    lineNav.backup();
+
   });
 
   motors.begin(MOTOR_SPEED_LOW).trace( Serial );
   motors.enable(); // comment out to disable motors
-  
-  
-//
+
+
+  //
   IMU.begin()
   .onTurnend(lineNav, Atm_line_navigator::EVT_INTERSECTION_TURN_COMPLETE)
   .trace( Serial );
@@ -60,24 +59,35 @@ void setup()
   flameFollower.begin(A8, A9, A10)
   .trace ( Serial )
   .onMotorChange( [] (int idx, int v, int up) {
-    Serial.println(v);
     switch (v) {
-      case Atm_line_navigator::MOTOR_LEFT:
+      case Atm_flame_follower::MOTOR_LEFT:
         motors.left();
         return;
-      case Atm_line_navigator::MOTOR_RIGHT:
+      case Atm_flame_follower::MOTOR_RIGHT:
         motors.right();
         return;
-      case Atm_line_navigator::MOTOR_FORWARD:
+      case Atm_flame_follower::MOTOR_FORWARD:
         motors.forward();
         return;
-      case Atm_line_navigator::MOTOR_STOP:
+      case Atm_flame_follower::MOTOR_STOP:
         motors.stop();
         return;
     }
     return;
   })
-  .onFlamedetected( lineNav, Atm_line_navigator::EVT_STOP )
+  //  .onFlamedetected( lineNav, Atm_line_navigator::EVT_STOP )
+  .onFlamedetected( [] (int idx, int v, int up) {
+
+    switch (v) {
+      case Atm_flame_follower::D_LEFT:
+        lineNav.stop();
+      case Atm_flame_follower::D_RIGHT:
+        lineNav.stop();
+      case Atm_flame_follower::D_FORWARD:
+        lineNav.dropoff_detected();
+        return;
+    }
+  })
   .onFlamehandled( lineNav, Atm_line_navigator::EVT_START )
   .onApproachingBall ( ball_grabber, Atm_ball_grabber::EVT_START )
   .stop();
@@ -87,6 +97,9 @@ void setup()
   }, 52, 22)
   .onMotorChange( [] (int idx, int v, int up) {
     switch (v) {
+      case Atm_line_navigator::MOTOR_BACKWARD:
+        motors.backward();
+        return;
       case Atm_line_navigator::MOTOR_LEFT:
         motors.left();
         return;
@@ -125,6 +138,6 @@ void setup()
 
 void loop()
 {
-//  motors.disable(); // comment out if you want to move during loops
+  //  motors.disable(); // comment out if you want to move during loops
   automaton.run();
 }

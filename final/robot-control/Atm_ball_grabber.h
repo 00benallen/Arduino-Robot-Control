@@ -2,14 +2,15 @@
 
 #include <Automaton.h>
 #include <Servo.h>
+#include <Ultrasonic.h>
 
 class Atm_ball_grabber: public Machine {
 
  public:
   enum { IDLE, WAITING_TO_GRAB, HOLDING_ON, RELEASING }; // STATES
   enum { EVT_START, EVT_STOP, EVT_RELEASE, EVT_GRAB, ELSE }; // EVENTS
-  Atm_ball_grabber( void ) : Machine() {};
-  Atm_ball_grabber& begin( int sensorPinLeft, int sensorPinRight );
+  Atm_ball_grabber( int triggerPin, int echoPin ) : Machine(), sonic(triggerPin, echoPin) {};
+  Atm_ball_grabber& begin( void );
   Atm_ball_grabber& trace( Stream & stream );
   Atm_ball_grabber& trigger( int event );
   int state( void );
@@ -29,8 +30,9 @@ class Atm_ball_grabber: public Machine {
   int event( int id ); 
   void action( int id );
   Servo claw;
-  int sensorPinLeft, sensorPinRight;
+  Ultrasonic sonic;
   bool ballDetected = false;
+  bool ballGrabbed = false;
    
 
 };

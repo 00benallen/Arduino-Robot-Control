@@ -4,7 +4,7 @@
  * Add extra initialization code
  */
 
-Atm_ball_grabber& Atm_ball_grabber::begin( int sensorPinLeft, int sensorPinRight ) {
+Atm_ball_grabber& Atm_ball_grabber::begin( void ) {
   // clang-format off
   const static state_t state_table[] PROGMEM = {
     /*                               ON_ENTER             ON_LOOP  ON_EXIT        EVT_START  EVT_STOP  EVT_RELEASE    EVT_GRAB  ELSE */
@@ -16,9 +16,14 @@ Atm_ball_grabber& Atm_ball_grabber::begin( int sensorPinLeft, int sensorPinRight
   // clang-format on
   Machine::begin( state_table, ELSE );
   Serial.println("Initializing Ball Grabber TM");
-  this->sensorPinLeft = sensorPinLeft;
-  this->sensorPinRight = sensorPinRight;
+//  pinMode(sensorPinLeft, INPUT);
+//  pinMode(sensorPinRight, INPUT);
   claw.attach(9);
+
+//  while(true) {
+//    Serial.println(sonic.read());
+//  }
+  
   
   return *this;          
 }
@@ -56,18 +61,28 @@ void Atm_ball_grabber::action( int id ) {
       claw.write(0);
       return;
     case LP_WAITING_TO_GRAB:
-      ballDetected = digitalRead(sensorPinLeft) == LOW || digitalRead(sensorPinRight) == LOW;
+//      ballDetected = digitalRead(sensorPinLeft) == LOW || digitalRead(sensorPinRight) == LOW;
+//      ballDetected = digitalRead(sensorPinLeft) == LOW;
+//      ballDetected = digitalRead(sensorPinRight) == LOW;
+
+      ballDetected = sonic.read() < 4;
+
       if (ballDetected) {
         Serial.println("BALL DETECTED");
       }
       return;
     case ENT_HOLDING_ON:
       claw.write(120);
-      push( connectors, ON_BALLGRABBED, 0, 0, 0 );
+      if (!ballGrabbed) {
+        Serial.println("Ball grabbed");
+        ballGrabbed = true;
+        push( connectors, ON_BALLGRABBED, 0, 0, 0 );
+      }
+      
       return;
     case LP_HOLDING_ON:
 
-      ballDetected = digitalRead(sensorPinLeft) == LOW || digitalRead(sensorPinRight) == LOW;
+//      ballDetected = digitalRead(sensorPinLeft) == LOW || digitalRead(sensorPinRight) == LOW;
 
       if (!ballDetected) {
         push( connectors, ON_BALLLOST, 0, 0, 0 );

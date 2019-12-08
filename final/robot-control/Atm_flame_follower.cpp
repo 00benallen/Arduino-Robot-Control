@@ -7,14 +7,14 @@
 Atm_flame_follower& Atm_flame_follower::begin(int leftPin, int rightPin, int forwardPin) {
   // clang-format off
   const static state_t state_table[] PROGMEM = {
-    /*                                                   ON_ENTER                   ON_LOOP  ON_EXIT      EVT_START  EVT_STOP  EVT_SIDE_FLAME_DETECTED   EVT_HALTING_COMPLETE  EVT_FORWARD_FLAME_DETECTED      EVT_BOOTH_AVOIDED  EVT_BOOTH_TOO_CLOSE_RIGHT  EVT_BOOTH_TOO_CLOSE_LEFT  EVT_DONE_CALIBRATING  ELSE */
-    /*               CALIBRATING */               ENT_CALIBRATING,                      -1,       -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1,                    -1,                        -1,                       -1,                 IDLE,    -1,
-    /*                      IDLE */                            -1,                  LP_IDLE,      -1,           -1,  DISABLED,       HALTING_FOR_FLAME,                    -1,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
-    /*         HALTING_FOR_FLAME */         ENT_HALTING_FOR_FLAME,                       -1,      -1,         IDLE,  DISABLED,                      -1, TURNING_TOWARDS_FLAME,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
-    /*     TURNING_TOWARDS_FLAME */                            -1, LP_TURNING_TOWARDS_FLAME,      -1,         IDLE,  DISABLED,                      -1,                    -1,          APPROACHING_FLAME,                    -1,            AVOIDING_BOOTH,           AVOIDING_BOOTH,                   -1,    -1,
-    /*         APPROACHING_FLAME */         ENT_APPROACHING_FLAME,     LP_APPROACHING_FLAME,      -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
-    /*            AVOIDING_BOOTH */                            -1,        LP_AVOIDING_BOOTH,      -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1, TURNING_TOWARDS_FLAME,                        -1,                       -1,                   -1,    -1,
-    /*                  DISABLED */                  ENT_DISABLED,                       -1,      -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
+    /*                                                   ON_ENTER                   ON_LOOP                  ON_EXIT      EVT_START  EVT_STOP  EVT_SIDE_FLAME_DETECTED   EVT_HALTING_COMPLETE  EVT_FORWARD_FLAME_DETECTED      EVT_BOOTH_AVOIDED  EVT_BOOTH_TOO_CLOSE_RIGHT  EVT_BOOTH_TOO_CLOSE_LEFT  EVT_DONE_CALIBRATING  ELSE */
+    /*               CALIBRATING */               ENT_CALIBRATING,                      -1,                      -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1,                    -1,                        -1,                       -1,                 IDLE,    -1,
+    /*                      IDLE */                            -1,                  LP_IDLE,                     -1,           -1,  DISABLED,       HALTING_FOR_FLAME,                    -1,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
+    /*         HALTING_FOR_FLAME */         ENT_HALTING_FOR_FLAME,                       -1,                     -1,         IDLE,  DISABLED,                      -1, TURNING_TOWARDS_FLAME,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
+    /*     TURNING_TOWARDS_FLAME */                            -1, LP_TURNING_TOWARDS_FLAME,                     -1,         IDLE,  DISABLED,                      -1,                    -1,          APPROACHING_FLAME,                    -1,            AVOIDING_BOOTH,           AVOIDING_BOOTH,                   -1,    -1,
+    /*         APPROACHING_FLAME */         ENT_APPROACHING_FLAME,     LP_APPROACHING_FLAME,  EXT_APPROACHING_FLAME,         IDLE,  DISABLED,                      -1,                    -1,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
+    /*            AVOIDING_BOOTH */                            -1,        LP_AVOIDING_BOOTH,                     -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1, TURNING_TOWARDS_FLAME,                        -1,                       -1,                   -1,    -1,
+    /*                  DISABLED */                  ENT_DISABLED,                       -1,                     -1,         IDLE,  DISABLED,                      -1,                    -1,                         -1,                    -1,                        -1,                       -1,                   -1,    -1,
   };
   // clang-format on
   Machine::begin( state_table, ELSE );
@@ -81,7 +81,7 @@ int Atm_flame_follower::event( int id ) {
       } else {
         return 0;
       }
-
+    
   }
   return 0;
 }
@@ -147,8 +147,8 @@ void Atm_flame_follower::pollFlameSensors() {
 
   float sensorDiff = ambientMinLeft - smoothedSensorValue;
   Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
-  float threshold = 60; // TODO refine
-  if (sensorDiff >= threshold) {
+  float sideThreshold = 14; // TODO refine
+  if (sensorDiff >= sideThreshold) {
     leftFlameDet = true;
   } else if (smoothedSensorValue >= ambientMinLeft) {
     leftFlameDet = false;
@@ -163,7 +163,7 @@ void Atm_flame_follower::pollFlameSensors() {
 
   sensorDiff = ambientMinRight - smoothedSensorValue;
   Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
-  if (sensorDiff >= threshold) {
+  if (sensorDiff >= sideThreshold) {
     rightFlameDet = true;
   } else if (smoothedSensorValue >= ambientMinRight) {
     rightFlameDet = false;
@@ -177,8 +177,9 @@ void Atm_flame_follower::pollFlameSensors() {
   // Compute running slope, we want the running derivative of the temperature function
 
   sensorDiff = ambientMinForward - smoothedSensorValue;
+  int forwardThreshold = 35;
   Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
-  if (sensorDiff >= threshold) {
+  if (sensorDiff >= forwardThreshold) {
     forwardFlameDet = true;
   } else if (smoothedSensorValue >= ambientMinForward) {
     forwardFlameDet = false;
@@ -202,15 +203,22 @@ void Atm_flame_follower::action( int id ) {
       calibrateSensors();
     case LP_IDLE:
       pollFlameSensors();
+
+      if (forwardFlameDet) {
+        push ( connectors, ON_FLAMEDETECTED, 0, D_FORWARD, 0 );
+        forwardFlameDet = false;
+      }
       return;
     case ENT_HALTING_FOR_FLAME:
       Serial.println("Halting");
       halt_timer.set(500);
-      push( connectors, ON_FLAMEDETECTED, 0, 0, 0 );
+      push( connectors, ON_FLAMEDETECTED, 0, flameSide, 0 );
       push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
       return;
     case LP_TURNING_TOWARDS_FLAME:
       pollFlameSensors();
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
+      delay(50);
       if (flameSide == D_LEFT) {
         push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0 );
       } else if (flameSide == D_RIGHT) {
@@ -223,8 +231,6 @@ void Atm_flame_follower::action( int id ) {
     case ENT_APPROACHING_FLAME:
       {
         //      push( connectors, ON_FLAMEHANDLED, 0, 0, 0 ); TODO when booth resolution protocol resolved
-        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
-        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0 );
         push( connectors, ON_APPROACHING_BALL, 0, 0, 0 );
 
         //        approachingTurn = flameSide;
@@ -247,6 +253,9 @@ void Atm_flame_follower::action( int id ) {
     case LP_APPROACHING_FLAME:
 
       Serial.println("LOOOOOOP");
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      delay(100);
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0 );
 
       //      peak = true;
       //      for (int i = 0; i < 5; i++) {
@@ -281,10 +290,14 @@ void Atm_flame_follower::action( int id ) {
       // TODO reverse direction bc of forward sensor and go forward at some point
 
       return;
+    case EXT_APPROACHING_FLAME:
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      return;
     case LP_AVOIDING_BOOTH:
       // TODO implement when booth sensors work
       return;
     case ENT_DISABLED:
+      Serial.println("Disabling flame follower");
       forwardFlameDet = false;
       rightFlameDet = false;
       leftFlameDet = false;
