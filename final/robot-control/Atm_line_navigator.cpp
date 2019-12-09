@@ -4,7 +4,7 @@
    Add extra initialization code
 */
 
-Atm_line_navigator& Atm_line_navigator::begin(const uint8_t qtrPins[], int leftAuxPin, int rightAuxPin) {
+Atm_line_navigator& Atm_line_navigator::begin(const uint8_t qtrPins[], int leftAuxPin, int rightAuxPin, int forwardFlamePin, int frontAuxPin) {
   // clang-format off
   const static state_t state_table[] PROGMEM = {
     /*                                           ON_ENTER                   ON_LOOP                  ON_EXIT     EVT_START       EVT_GAP_DETECTED  EVT_INTERSECTION_LEFT_DETECTED  EVT_INTERSECTION_RIGHT_DETECTED  EVT_INTERSECTION_TURN_COMPLETE  EVT_INTERSECTION_ALIGN_COMPLETE  EVT_DONE_CALIBRATING  EVT_STOP  EVT_BALL_GRABBED  EVT_DROPOFF_DETECTED  ELSE */
@@ -23,12 +23,20 @@ Atm_line_navigator& Atm_line_navigator::begin(const uint8_t qtrPins[], int leftA
   Serial.println("Initializing Auxillary IR Sensors");
   this->leftAuxPin = leftAuxPin;
   this->rightAuxPin = rightAuxPin;
+  this->forwardFlamePin = forwardFlamePin;
+  this->frontAuxPin = frontAuxPin;
   pinMode(leftAuxPin, INPUT);
   pinMode(rightAuxPin, INPUT);
+  pinMode(forwardFlamePin, INPUT);
+  pinMode(frontAuxPin, INPUT);
 
   Serial.println("Initializing QTC Reflectance Array");
   qtr.setTypeRC();
   qtr.setSensorPins(qtrPins, 8);
+
+//  while (true) {
+//    Serial.println(sonic.read());
+//  }
 
   return *this;
 }
@@ -79,11 +87,16 @@ int Atm_line_navigator::event( int id ) {
         return 1;
       } else if (state() == TURN_AROUND && lineLeftEnded && lineRightEnded && lineUnderQtr) {
         Serial.println("Turn Around alignment complete!");
+        Serial.print("Left ended"); Serial.println(lineLeftEnded);
+        Serial.print("Right ended"); Serial.println(lineRightEnded);
+        Serial.print("Forward ended"); Serial.println(lineUnderQtr);
         return 1;
       } else {
         Serial.println("Nope");
         return 0;
       }
+    case EVT_DROPOFF_DETECTED:
+      return (forwardFlameDetected || forwardObjectDetected);
   }
   return 0;
 }
@@ -106,8 +119,12 @@ void Atm_line_navigator::action( int id ) {
         if (!lineUnderQtr) {
           Serial.println("GAP");
           if (justTurned) {
-            Serial.println("Turning flame sensor on");
-            push (connectors, ON_TURN_END, 0, 0, 0);
+            if (!ballGrabbed) {
+              Serial.println("Turning flame sensor on");
+              push (connectors, ON_TURN_END, 0, 0, 0);
+            } else {
+              Serial.println("Not turning flames back on because ball grabbed");
+            }
             justTurned = false;
           } else {
             Serial.println("Not just turned, not turning flame sensors on");
@@ -135,7 +152,7 @@ void Atm_line_navigator::action( int id ) {
       justTurned = true;
       Serial.println("Just turned true");
 
-      push ( connectors, ON_TURN_START, 0, 45, 0 ); // degrees
+      push ( connectors, ON_TURN_START, 0, 45, true ); // degrees
       if (lineLeftEnded || lineRightEnded) {
 
         if (lineRightDetected && lineLeftDetected) {
@@ -158,13 +175,13 @@ void Atm_line_navigator::action( int id ) {
       return;
     case ENT_INTERSECTION_ALIGN:
       push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0);
-      delay(100);
+      delay(300);
 
       return;
     case LP_INTERSECTION_ALIGN:
       pollLineSensors();
       push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
-      delayMicroseconds(200);
+      delayMicroseconds(50);
 
       if (alignDirection == AlignDirection::ALIGN_LEFT) {
 
@@ -180,28 +197,47 @@ void Atm_line_navigator::action( int id ) {
       lineLeftEnded = false;
       lineRightDetected = false;
       lineRightEnded = false;
+      forwardFlameDetected = false;
+      forwardObjectDetected = false;
       return;
     case ENT_BACKUP_TO_LINE:
-      ballGrabbed = true;
+      justTurned = false;
       return;
     case LP_BACKUP_TO_LINE:
       pollLineSensors();
       Serial.println("Line sensors polled");
       push (connectors, ON_MOTOR_CHANGE, 0, MOTOR_BACKWARD, 0);
+      delay(300);
+      push (connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
+
+      if (lineLeftDetected || lineRightDetected) {
+        push (connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0);
+        delay(100);
+      }
     case ENT_TURN_AROUND:
+      push ( connectors, ON_TURN_START, 0, 45, true ); // degrees
       return;
     case LP_TURN_AROUND:
-      pollLineSensors();
-      
-      if (lineLeftEnded && lineRightEnded) {
 
-        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
-        delayMicroseconds(200);
-        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
-
+      if (ballGrabbed && forwardFlameDetected) {
+        push( connectors, ON_DROPOFF_FOUND, 0, 0, 0);
+        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_BACKWARD, 0);
+        delay(1500);
+        ballGrabbed = false;
       } else {
-        push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+        pollLineSensors();
+
+        if (lineLeftEnded && lineRightEnded) {
+
+          push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0);
+          delayMicroseconds(200);
+          push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+
+        } else {
+          push(connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0);
+        }
       }
+
 
       return;
     case EXT_TURN_AROUND:
@@ -209,6 +245,11 @@ void Atm_line_navigator::action( int id ) {
       lineLeftEnded = false;
       lineRightDetected = false;
       lineRightEnded = false;
+      ballGrabbed = false;
+      forwardFlameDetected = false;
+      forwardObjectDetected = false;
+      forwardFlameDetected = false;
+      //      push (connectors, ON_TURN_END, 0, 0, 0);
       return;
   }
 }
@@ -258,6 +299,23 @@ Atm_line_navigator& Atm_line_navigator::calibrate() {
 }
 
 void Atm_line_navigator::pollLineSensors() {
+
+  if (digitalRead(forwardFlamePin) == LOW) {
+    forwardFlameDetected = true;
+  }
+
+//  if (digitalRead(frontAuxPin) == LOW) {
+//    forwardObjectDetected = true;
+//  }
+
+  unsigned int distanceForward = sonic.read();
+  if (distanceForward < 30) {
+    forwardObjectDetected = true;
+  }
+
+  if (forwardFlameDetected) {
+    Serial.println("DROPOOOOOOOOOOOOOFF");
+  }
 
   if (digitalRead(leftAuxPin) == HIGH) {
     //    Serial.println("FOUND LINE LEFT =========================================");
@@ -350,9 +408,9 @@ Atm_line_navigator& Atm_line_navigator::stop() {
   return *this;
 }
 
-Atm_line_navigator& Atm_line_navigator::backup ( void ) {
+Atm_line_navigator& Atm_line_navigator::backup ( bool ball ) {
   trigger( EVT_BALL_GRABBED );
-  ballGrabbed = true;
+  ballGrabbed = ball;
   return *this;
 }
 
@@ -400,6 +458,21 @@ Atm_line_navigator& Atm_line_navigator::onTurnEnd( Machine & machine, int event 
 
 Atm_line_navigator& Atm_line_navigator::onTurnEnd( atm_cb_push_t callback, int idx ) {
   onPush( connectors, ON_TURN_END, 0, 1, 1, callback, idx );
+  return *this;
+}
+
+
+/*
+   onTurnEnd() push connector variants ( slots 1, autostore 0, broadcast 0 )
+*/
+
+Atm_line_navigator& Atm_line_navigator::onDropoffFound( Machine & machine, int event ) {
+  onPush( connectors, ON_DROPOFF_FOUND, 0, 1, 1, machine, event );
+  return *this;
+}
+
+Atm_line_navigator& Atm_line_navigator::onDropoffFound( atm_cb_push_t callback, int idx ) {
+  onPush( connectors, ON_DROPOFF_FOUND, 0, 1, 1, callback, idx );
   return *this;
 }
 

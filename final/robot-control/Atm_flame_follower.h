@@ -2,6 +2,8 @@
 
 #include <Automaton.h>
 #include <Smoothed.h>
+#include "Adafruit_VL53L0X.h"
+#include <Ultrasonic.h>
 
 class Atm_flame_follower: public Machine {
 
@@ -10,7 +12,7 @@ class Atm_flame_follower: public Machine {
   enum { EVT_START, EVT_STOP, EVT_SIDE_FLAME_DETECTED, EVT_HALTING_COMPLETE, EVT_FORWARD_FLAME_DETECTED, EVT_BOOTH_AVOIDED, EVT_BOOTH_TOO_CLOSE_RIGHT, EVT_BOOTH_TOO_CLOSE_LEFT, EVT_DONE_CALIBRATING, ELSE }; // EVENTS
   enum Direction { D_LEFT, D_RIGHT, D_FORWARD, D_NONE };
   enum { MOTOR_LEFT, MOTOR_RIGHT, MOTOR_FORWARD, MOTOR_STOP }; // Helpful enum for onMotorChange event processing
-  Atm_flame_follower( void ) : Machine() {};
+  Atm_flame_follower( int triggerP, int echoP ) : Machine(), sonic(triggerP, echoP) {};
   Atm_flame_follower& begin( int leftPin, int rightPin, int forwardPin );
   Atm_flame_follower& trace( Stream & stream );
   Atm_flame_follower& trigger( int event );
@@ -23,12 +25,14 @@ class Atm_flame_follower: public Machine {
   Atm_flame_follower& onMotorChange( atm_cb_push_t callback, int idx = 0 );
   Atm_flame_follower& onApproachingBall( Machine& machine, int event = 0 );
   Atm_flame_follower& onApproachingBall( atm_cb_push_t callback, int idx = 0 );
+  Atm_flame_follower& onNoBall( Machine& machine, int event = 0 );
+  Atm_flame_follower& onNoBall( atm_cb_push_t callback, int idx = 0 );
   Atm_flame_follower& start( void );
   Atm_flame_follower& stop( void );
 
  private:
   enum { LP_IDLE, ENT_CALIBRATING, ENT_HALTING_FOR_FLAME, LP_TURNING_TOWARDS_FLAME, ENT_APPROACHING_FLAME, LP_APPROACHING_FLAME, EXT_APPROACHING_FLAME, LP_AVOIDING_BOOTH, ENT_DISABLED }; // ACTIONS
-  enum { ON_FLAMEDETECTED, ON_FLAMEHANDLED, ON_MOTOR_CHANGE, ON_APPROACHING_BALL, CONN_MAX }; // CONNECTORS
+  enum { ON_FLAMEDETECTED, ON_FLAMEHANDLED, ON_MOTOR_CHANGE, ON_APPROACHING_BALL, ON_NO_BALL, CONN_MAX }; // CONNECTORS
   atm_connector connectors[CONN_MAX];
   int event( int id ); 
   void action( int id ); 
@@ -39,17 +43,17 @@ class Atm_flame_follower: public Machine {
   bool doneCalibrating;
   Direction flameSide = D_NONE;
   atm_timer_millis halt_timer;
+  Ultrasonic sonic;
   Smoothed <float> smoothedRight;
   Smoothed <float> smoothedLeft;
   Smoothed <float> smoothedForward;
   float ambientMinLeft = 1000, ambientMinRight = 1000, ambientMinForward = 1000;
   float ambientMaxLeft = 0, ambientMaxRight = 0, ambientMaxForward = 0;
-//  float approachingPeak = 0;
-//  Direction approachingTurn;
-//  float rawForwardValues[5];
-//  int rawForwardValuesInd;
-//  bool peak = true;
-
+  Smoothed <int> smoothedDistance;
+  bool closeEnoughToBall = false;
+  unsigned int loopsBeforeUltrasonic = 0;
+  unsigned int turnDelay = 250;
+  bool pendingStop = false;
 };
 
 /*

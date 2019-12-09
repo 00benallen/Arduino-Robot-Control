@@ -17,10 +17,10 @@ Atm_imu IMU;
 //Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 #include "Atm_line_navigator.h"
-Atm_line_navigator lineNav;
+Atm_line_navigator lineNav(32, 30);
 
 #include "Atm_flame_follower.h"
-Atm_flame_follower flameFollower;
+Atm_flame_follower flameFollower(32, 30);
 
 /** Grabber **/
 #include "Atm_ball_grabber.h"
@@ -40,8 +40,8 @@ void setup()
     flameFollower.stop();
     Serial.println("Stoppping motors");
     motors.stop();
-    Serial.println("Restarting line nav");
-    lineNav.backup();
+    Serial.println("Restarting line nav with ball");
+    lineNav.backup(true);
 
   });
 
@@ -84,9 +84,18 @@ void setup()
       case Atm_flame_follower::D_RIGHT:
         lineNav.stop();
       case Atm_flame_follower::D_FORWARD:
-        lineNav.dropoff_detected();
+        //        lineNav.dropoff_detected();
         return;
     }
+  })
+  .onNoBall( [] (int idx, int v, int up) {
+    Serial.println("Stopping flame follower");
+    flameFollower.stop();
+    Serial.println("Stoppping motors");
+    motors.stop();
+    Serial.println("Restarting line nav without ball");
+    lineNav.backup(false);
+    //    ball_grabber.stop();
   })
   .onFlamehandled( lineNav, Atm_line_navigator::EVT_START )
   .onApproachingBall ( ball_grabber, Atm_ball_grabber::EVT_START )
@@ -94,7 +103,7 @@ void setup()
 
   lineNav.begin((const uint8_t[]) {
     53, 51, 49, 47, 45, 43, 41, 39
-  }, 52, 22)
+  }, 52, 22, 34, 28)
   .onMotorChange( [] (int idx, int v, int up) {
     switch (v) {
       case Atm_line_navigator::MOTOR_BACKWARD:
@@ -116,12 +125,18 @@ void setup()
     return;
   })
   .onTurnStart([] (int idx, int v, int up) {
-    IMU.track_turn(v);
-    flameFollower.stop();
+    if (up) {
+      IMU.track_turn(v);
+      flameFollower.stop();
+    } else {
+      flameFollower.stop();
+    }
+
   })
   .onTurnEnd([] (int idx, int v, int up) {
     flameFollower.start();
   })
+  .onDropoffFound(ball_grabber, Atm_ball_grabber::EVT_STOP)
   .trace( Serial )
   .start();
 }

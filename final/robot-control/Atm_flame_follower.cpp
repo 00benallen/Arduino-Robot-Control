@@ -28,7 +28,18 @@ Atm_flame_follower& Atm_flame_follower::begin(int leftPin, int rightPin, int for
   smoothedLeft.begin(SMOOTHED_EXPONENTIAL, 50);
   smoothedRight.begin(SMOOTHED_EXPONENTIAL, 50);
   smoothedForward.begin(SMOOTHED_EXPONENTIAL, 300);
+  smoothedDistance.begin(SMOOTHED_EXPONENTIAL, 50);
   halt_timer.set( ATM_TIMER_OFF );
+
+  //  while (!lox.begin()) {
+  //    Serial.println(F("Failed to boot VL53L0X"));
+  //    delay(1000);
+  //  }
+  //  Serial.println("VL53L0X laser TOF sensor detected");
+//
+//    while (true) {
+//      Serial.println(sonic.read());
+//    }
   return *this;
 }
 
@@ -81,7 +92,7 @@ int Atm_flame_follower::event( int id ) {
       } else {
         return 0;
       }
-    
+
   }
   return 0;
 }
@@ -146,8 +157,8 @@ void Atm_flame_follower::pollFlameSensors() {
   // Compute running slope, we want the running derivative of the temperature function
 
   float sensorDiff = ambientMinLeft - smoothedSensorValue;
-  Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
-  float sideThreshold = 14; // TODO refine
+  Serial.print("Left: "); Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
+  float sideThreshold = 12; // TODO refine
   if (sensorDiff >= sideThreshold) {
     leftFlameDet = true;
   } else if (smoothedSensorValue >= ambientMinLeft) {
@@ -162,7 +173,7 @@ void Atm_flame_follower::pollFlameSensors() {
   // Compute running slope, we want the running derivative of the temperature function
 
   sensorDiff = ambientMinRight - smoothedSensorValue;
-  Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
+  Serial.print("Right: "); Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
   if (sensorDiff >= sideThreshold) {
     rightFlameDet = true;
   } else if (smoothedSensorValue >= ambientMinRight) {
@@ -177,8 +188,8 @@ void Atm_flame_follower::pollFlameSensors() {
   // Compute running slope, we want the running derivative of the temperature function
 
   sensorDiff = ambientMinForward - smoothedSensorValue;
-  int forwardThreshold = 35;
-  Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
+  int forwardThreshold = 8;
+  Serial.print("Forward: "); Serial.print(smoothedSensorValue); Serial.print(" / "); Serial.println(sensorDiff);
   if (sensorDiff >= forwardThreshold) {
     forwardFlameDet = true;
   } else if (smoothedSensorValue >= ambientMinForward) {
@@ -221,8 +232,10 @@ void Atm_flame_follower::action( int id ) {
       delay(50);
       if (flameSide == D_LEFT) {
         push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0 );
+//        delay(500);
       } else if (flameSide == D_RIGHT) {
         push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0 );
+//        delay(500);
       } else {
         Serial.println("ERROR: TURNING_TOWARDS_FLAME state doesn't know what side the flame is on");
       }
@@ -230,68 +243,146 @@ void Atm_flame_follower::action( int id ) {
       return;
     case ENT_APPROACHING_FLAME:
       {
-        //      push( connectors, ON_FLAMEHANDLED, 0, 0, 0 ); TODO when booth resolution protocol resolved
         push( connectors, ON_APPROACHING_BALL, 0, 0, 0 );
-
-        //        approachingTurn = flameSide;
-        //        if (flameSide == D_LEFT) {
-        //          approachingTurn = D_RIGHT;
-        //        } else {
-        //          approachingTurn = D_LEFT;
-        //        }
-        //
-        //        float rawForwardRead = analogRead(forwardPin);
-        //        rawForwardValues[rawForwardValuesInd++] = rawForwardRead;
-        //
-        //        if (rawForwardValuesInd > 4) {
-        //          rawForwardValuesInd = 0;
-        //        }
-
+        closeEnoughToBall = false;
+        loopsBeforeUltrasonic = 0;
+        pendingStop = false;
         return;
       }
       break;
     case LP_APPROACHING_FLAME:
+      if (pendingStop) { // to reduce delay on stopping, may cause crashes?
+        return;
+      }
+      
+      loopsBeforeUltrasonic++;
 
       Serial.println("LOOOOOOP");
+      unsigned int forwardDelay = 200;
+      unsigned int stopDelay = 400;
+
+      unsigned int candleDist = sonic.read();
+      if (candleDist <= 8) {
+        push ( connectors, ON_NO_BALL, 0, 0, 0);
+      }
+
+      if (closeEnoughToBall) {
+        Serial.println("Close enough to ball, rushing in");
+        //        VL53L0X_RangingMeasurementData_t measure;
+        //        lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+        //        if (measure.RangeStatus == 2) {
+        //          Serial.print(measure.RangeMilliMeter); Serial.print("\t"); Serial.println(smoothedDistance.get());
+        //        }
+        //
+        //        if (measure.RangeMilliMeter < 150) {
+        //          push ( connectors, ON_NO_BALL, 0, 0, 0);
+        //        }
+
+
+        int fastForwardDelay = 100 ;
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0 );
+        delay(fastForwardDelay);
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+        delay(fastForwardDelay);
+        return;
+      }
+
+      Serial.println("Not close enough to ball, searching");
+
       push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
-      delay(100);
+      delay(stopDelay);
+
+      // turn right
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0 );
+      delay(turnDelay);
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      delay(stopDelay);
+
+      // read avg value
+      unsigned int rightSum = 0;
+      for (int i = 0; i < 10; i++) {
+        rightSum += analogRead(forwardPin);
+        delayMicroseconds(1);
+      }
+      unsigned int rightRead = rightSum / 10;
+
+      // turn to middle
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0 );
+      delay(turnDelay);
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      delay(stopDelay);
+
+      // read avg value
+      unsigned int middleSum = 0;
+      for (int i = 0; i < 10; i++) {
+        middleSum += analogRead(forwardPin);
+        delayMicroseconds(1);
+      }
+      unsigned int middleRead = middleSum / 10;
+
+      // turn to left
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0 );
+      delay(turnDelay);
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      delay(stopDelay);
+
+      // read avg value
+      unsigned int leftSum = 0;
+      for (int i = 0; i < 10; i++) {
+        leftSum += analogRead(forwardPin);
+        delayMicroseconds(1);
+      }
+      unsigned int leftRead = leftSum / 10;
+
+      Serial.print("Right"); Serial.println(rightRead);
+      Serial.print("Left"); Serial.println(leftRead);
+      Serial.print("Middle"); Serial.println(middleRead);
+
+      // choose hottest of 3, turn to that direction and go forward a bit
+      if (rightRead <= middleRead && rightRead <= leftRead) {
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0 );
+        delay(turnDelay);
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+        delay(stopDelay);
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0 );
+        delay(turnDelay);
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+        delay(stopDelay);
+      } else if (middleRead < leftRead) {
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0 );
+        delay(turnDelay);
+        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+        delay(stopDelay);
+      } // else do nothing bc we're already stopped at left
+
+      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      delay(stopDelay);
+
+      //      VL53L0X_RangingMeasurementData_t measure;
+      //      lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+      //      if (measure.RangeStatus == 2) {
+      //        Serial.print(measure.RangeMilliMeter); Serial.print("\t"); Serial.println(smoothedDistance.get());
+      //      }
+
+      //      if (measure.RangeMilliMeter < 250) {
+      //        closeEnoughToBall = true;
+      //      }
+
+      if (loopsBeforeUltrasonic >= 3) {
+        unsigned int candleDist = sonic.read();
+        turnDelay = 100;
+        if (candleDist <= 21) {
+          closeEnoughToBall = true;
+        }
+      }
+
       push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0 );
-
-      //      peak = true;
-      //      for (int i = 0; i < 5; i++) {
-      //        Serial.println(rawForwardValues[i]);
-      //        if (rawForwardValues[rawForwardValuesInd] < rawForwardValues[i]) {
-      //          peak = false;
-      //        }
-      //      }
-      //
-      //      if (peak) {
-      //        Serial.println("Reached peak");
-//      push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_FORWARD, 0 );
-//      push( connectors, ON_APPROACHING_BALL, 0, 0, 0 );
-      //      } else {
-
-      //      Serial.println("Searching for peak");
-      //
-      //      float rawForwardRead = analogRead(forwardPin);
-      //      rawForwardValues[rawForwardValuesInd++] = rawForwardRead;
-      //
-      //      if (rawForwardValuesInd > 4) {
-      //        rawForwardValuesInd = 0;
-      //      }
-
-      //      if (approachingTurn == D_LEFT) {
-      //        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_LEFT, 0 );
-      //      } else {
-      //        push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_RIGHT, 0 );
-      //      }
-      //      }
-
-      // TODO reverse direction bc of forward sensor and go forward at some point
+      delay(forwardDelay);
 
       return;
     case EXT_APPROACHING_FLAME:
       push( connectors, ON_MOTOR_CHANGE, 0, MOTOR_STOP, 0 );
+      closeEnoughToBall = false;
       return;
     case LP_AVOIDING_BOOTH:
       // TODO implement when booth sensors work
@@ -305,12 +396,8 @@ void Atm_flame_follower::action( int id ) {
       smoothedRight.clear();
       smoothedLeft.clear();
       smoothedForward.clear();
-//      approachingPeak = 0;
-//      for (int i = 0; i < 5; i++) {
-//        rawForwardValues[i] = 0;
-//      }
-//      rawForwardValuesInd = 0;
-//      peak = true;
+      smoothedDistance.clear();
+      closeEnoughToBall = false;
   }
 }
 
@@ -345,6 +432,7 @@ Atm_flame_follower& Atm_flame_follower::start() {
 
 Atm_flame_follower& Atm_flame_follower::stop() {
   trigger( EVT_STOP );
+  pendingStop = true;
   return *this;
 }
 
@@ -401,6 +489,20 @@ Atm_flame_follower& Atm_flame_follower::onApproachingBall( Machine& machine, int
 
 Atm_flame_follower& Atm_flame_follower::onApproachingBall( atm_cb_push_t callback, int idx ) {
   onPush( connectors, ON_APPROACHING_BALL, 0, 1, 1, callback, idx );
+  return *this;
+}
+
+/*
+   onNoBall() push connector variants ( slots 1, autostore 0, broadcast 0 )
+*/
+
+Atm_flame_follower& Atm_flame_follower::onNoBall( Machine& machine, int event ) {
+  onPush( connectors, ON_NO_BALL, 0, 1, 1, machine, event );
+  return *this;
+}
+
+Atm_flame_follower& Atm_flame_follower::onNoBall( atm_cb_push_t callback, int idx ) {
+  onPush( connectors, ON_NO_BALL, 0, 1, 1, callback, idx );
   return *this;
 }
 

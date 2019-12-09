@@ -22,6 +22,7 @@ Atm_ball_grabber& Atm_ball_grabber::begin( void ) {
 
 //  while(true) {
 //    Serial.println(sonic.read());
+//    claw.write(80);
 //  }
   
   
@@ -54,10 +55,14 @@ void Atm_ball_grabber::action( int id ) {
   switch ( id ) {
     case ENT_IDLE:
       ballDetected = false;
+      ballGrabbed = false;
+      Serial.println("Claw relaxed Idle");
       claw.write(0);
       return;
     case ENT_WAITING_TO_GRAB:
       ballDetected = false;
+      ballGrabbed = false;
+      Serial.println("Claw relaxed Waiting");
       claw.write(0);
       return;
     case LP_WAITING_TO_GRAB:
@@ -65,18 +70,22 @@ void Atm_ball_grabber::action( int id ) {
 //      ballDetected = digitalRead(sensorPinLeft) == LOW;
 //      ballDetected = digitalRead(sensorPinRight) == LOW;
 
-      ballDetected = sonic.read() < 4;
+      ballDetected = sonic.read() > 5;
 
       if (ballDetected) {
         Serial.println("BALL DETECTED");
       }
       return;
     case ENT_HOLDING_ON:
-      claw.write(120);
+      Serial.println("Holding the ball");
+      
       if (!ballGrabbed) {
         Serial.println("Ball grabbed");
         ballGrabbed = true;
+        claw.write(80);
         push( connectors, ON_BALLGRABBED, 0, 0, 0 );
+      } else {
+        claw.write(80);
       }
       
       return;
@@ -86,6 +95,10 @@ void Atm_ball_grabber::action( int id ) {
 
       if (!ballDetected) {
         push( connectors, ON_BALLLOST, 0, 0, 0 );
+      }
+      else {
+        Serial.println("Closing claw");
+        claw.write(80);
       }
     
       return;

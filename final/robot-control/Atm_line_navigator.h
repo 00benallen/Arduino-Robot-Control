@@ -3,6 +3,7 @@
 #include <Automaton.h>
 #include "Atm_motors.h"
 #include <QTRSensors.h>
+#include <Ultrasonic.h>
 
 enum class AlignDirection { ALIGN_LEFT, ALIGN_RIGHT }; // turn directions for intersection alignment
 
@@ -14,8 +15,8 @@ class Atm_line_navigator: public Machine {
   enum { FOLLOW_LINE, IDENTIFY_INTERSECTION, INTERSECTION_TURN, INTERSECTION_ALIGN, CALIBRATING, BACKUP_TO_LINE, TURN_AROUND, IDLE }; // STATES
   enum { EVT_START, EVT_GAP_DETECTED, EVT_INTERSECTION_LEFT_DETECTED, EVT_INTERSECTION_RIGHT_DETECTED, EVT_INTERSECTION_TURN_COMPLETE, EVT_INTERSECTION_ALIGN_COMPLETE, EVT_DONE_CALIBRATING, EVT_STOP, EVT_BALL_GRABBED, EVT_DROPOFF_DETECTED, ELSE }; // EVENTS
   enum { MOTOR_LEFT, MOTOR_RIGHT, MOTOR_FORWARD, MOTOR_STOP, MOTOR_BACKWARD }; // Helpful enum for onMotorChange event processing
-  Atm_line_navigator( ) : Machine() {};
-  Atm_line_navigator& begin( const uint8_t qtrPins[], int leftAuxPin, int rightAuxPin );
+  Atm_line_navigator( int triggerP, int echoP) : Machine(), sonic(triggerP, echoP) {};
+  Atm_line_navigator& begin( const uint8_t qtrPins[], int leftAuxPin, int rightAuxPin, int forwardFlamePin, int frontAuxPin );
   Atm_line_navigator& trace( Stream & stream );
   Atm_line_navigator& trigger( int event );
   int state( void );
@@ -25,20 +26,22 @@ class Atm_line_navigator: public Machine {
   Atm_line_navigator& onTurnStart( atm_cb_push_t callback, int idx = 0 );
   Atm_line_navigator& onTurnEnd( Machine& machine, int event = 0 );
   Atm_line_navigator& onTurnEnd( atm_cb_push_t callback, int idx = 0 );
+  Atm_line_navigator& onDropoffFound( Machine& machine, int event = 0 );
+  Atm_line_navigator& onDropoffFound( atm_cb_push_t callback, int idx = 0 );
   Atm_line_navigator& start( void );
   Atm_line_navigator& stop( void );
   Atm_line_navigator& calibrate( void );
-  Atm_line_navigator& backup ( void );
+  Atm_line_navigator& backup ( bool ball );
   Atm_line_navigator& dropoff_detected ( void );
 
  private:
   enum { ENT_FOLLOW_LINE, LP_FOLLOW_LINE, ENT_IDENTIFY_INTERSECTION, LP_IDENTIFY_INTERSECTION, ENT_INTERSECTION_TURN, LP_INTERSECTION_TURN, ENT_INTERSECTION_ALIGN, LP_INTERSECTION_ALIGN, EXT_INTERSECTION_ALIGN, ENT_CALIBRATING, ENT_BACKUP_TO_LINE, LP_BACKUP_TO_LINE, ENT_TURN_AROUND, LP_TURN_AROUND, EXT_TURN_AROUND }; // ACTIONS
   int event( int id ); 
   void action( int id );
-  enum { ON_MOTOR_CHANGE, ON_TURN_START, ON_TURN_END, CONN_MAX }; // CONNECTORS
+  enum { ON_MOTOR_CHANGE, ON_TURN_START, ON_TURN_END, ON_DROPOFF_FOUND, CONN_MAX }; // CONNECTORS
   atm_connector connectors[CONN_MAX];
   QTRSensors qtr;
-  int leftAuxPin, rightAuxPin;
+  int leftAuxPin, rightAuxPin, frontAuxPin;
   uint16_t linePosition;
   void pollLineSensors();
   bool lineUnderQtr;
@@ -52,6 +55,10 @@ class Atm_line_navigator: public Machine {
   bool doneCalibrating;
   bool justTurned = true;
   bool ballGrabbed = false;
+  int forwardFlamePin;
+  bool forwardFlameDetected = false;
+  bool forwardObjectDetected = false;
+  Ultrasonic sonic;
 };
 
 /*
